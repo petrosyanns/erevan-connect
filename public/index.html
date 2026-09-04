@@ -1,74 +1,166 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" class="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Erevan Connect</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #0F172A;
+      color: #F8FAFC;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .glass-nav {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #6366F1 0%, #A855F7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .btn-gradient {
+      background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
+      box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.5);
+    }
+
+    .btn-gradient:active {
+      transform: scale(0.98);
+    }
+
+    /* Кастомный скроллбар */
+    ::-webkit-scrollbar {
+      width: 0px;
+      background: transparent;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 text-gray-800 p-4">
+<body class="pb-24 pt-4 px-4 min-h-screen antialiased selection:bg-indigo-500 selection:text-white">
 
-  <div id="app" class="max-w-md mx-auto space-y-4">
-    <!-- Шапка -->
-    <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
-      <h1 class="text-xl font-bold text-indigo-600">Erevan Connect 🇦🇲</h1>
-      <span id="user-name" class="text-sm font-medium text-gray-500"></span>
-    </div>
-
-    <!-- Переключатель вкладок -->
-    <div class="flex border-b border-gray-200 bg-white rounded-lg p-1 shadow-sm">
-      <button id="tab-feed" onclick="switchTab('feed')" class="flex-1 py-2 text-center font-medium text-indigo-600 border-b-2 border-indigo-600">Лента</button>
-      <button id="tab-create" onclick="switchTab('create')" class="flex-1 py-2 text-center font-medium text-gray-500">Создать</button>
-    </div>
-
-    <!-- Вкладка 1: Лента объявлений -->
-    <div id="section-feed" class="space-y-3">
-      <div id="events-list" class="space-y-3">
-        <p class="text-center text-gray-400 py-6">Загрузка объявлений...</p>
+  <div id="app" class="max-w-md mx-auto space-y-5">
+    
+    <!-- Header -->
+    <header class="flex justify-between items-center bg-slate-800/50 p-3.5 px-4 rounded-2xl border border-white/5 backdrop-blur-md">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-lg">
+          🇦🇲
+        </div>
+        <div>
+          <h1 class="text-base font-extrabold tracking-tight gradient-text">Erevan Connect</h1>
+          <p class="text-[10px] text-slate-400 font-medium">Партнеры и события в Ереване</p>
+        </div>
       </div>
-    </div>
+      <div class="flex items-center space-x-2 bg-slate-900/60 px-3 py-1.5 rounded-full border border-white/5">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="user-name" class="text-xs font-semibold text-slate-300">Гость</span>
+      </div>
+    </header>
 
-    <!-- Вкладка 2: Форма создания -->
-    <div id="section-create" class="hidden bg-white p-4 rounded-xl shadow-sm space-y-3">
-      <h2 class="text-lg font-bold">Новая заявка</h2>
+    <!-- SECTION 1: FEED -->
+    <main id="section-feed" class="space-y-3">
+      <div class="flex items-center justify-between px-1">
+        <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider text-[11px]">Активные события</h2>
+        <span class="text-xs text-indigo-400 font-medium hover:underline cursor-pointer" onclick="loadEvents()">Обновить</span>
+      </div>
       
-      <div>
-        <label class="text-xs font-semibold text-gray-500">Категория</label>
-        <select id="field-category" class="w-full border rounded-lg p-2 mt-1 text-sm bg-gray-50"></select>
-      </div>
-
-      <div>
-        <label class="text-xs font-semibold text-gray-500">Заголовок</label>
-        <input type="text" id="field-title" placeholder="например: Ищу +2 на футбол" class="w-full border rounded-lg p-2 mt-1 text-sm">
-      </div>
-
-      <div>
-        <label class="text-xs font-semibold text-gray-500">Локация</label>
-        <input type="text" id="field-location" placeholder="например: Аван, поле Hatis" class="w-full border rounded-lg p-2 mt-1 text-sm">
-      </div>
-
-      <div>
-        <label class="text-xs font-semibold text-gray-500">Описание</label>
-        <textarea id="field-description" placeholder="Детали, уровень игры или планов" class="w-full border rounded-lg p-2 mt-1 text-sm h-20"></textarea>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="text-xs font-semibold text-gray-500">Дата и время</label>
-          <input type="datetime-local" id="field-date" class="w-full border rounded-lg p-2 mt-1 text-sm">
-        </div>
-        <div>
-          <label class="text-xs font-semibold text-gray-500">Человек нужно</label>
-          <input type="number" id="field-people" value="2" min="1" max="20" class="w-full border rounded-lg p-2 mt-1 text-sm">
+      <div id="events-list" class="space-y-3">
+        <!-- Карточки загружаются динамически -->
+        <div class="glass-card p-8 rounded-2xl text-center space-y-3">
+          <div class="inline-block animate-spin text-indigo-500 text-2xl">
+            <i class="fa-solid fa-circle-notch"></i>
+          </div>
+          <p class="text-xs text-slate-400 font-medium">Загрузка актуальных объявлений...</p>
         </div>
       </div>
+    </main>
 
-      <button onclick="submitEvent()" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-lg text-sm shadow hover:bg-indigo-700 active:scale-95 transition">Опубликовать</button>
-    </div>
+    <!-- SECTION 2: CREATE FORM -->
+    <main id="section-create" class="hidden space-y-4">
+      <div class="glass-card p-5 rounded-3xl space-y-4">
+        <div class="border-b border-white/10 pb-3">
+          <h2 class="text-base font-bold text-white">Создать объявление</h2>
+          <p class="text-xs text-slate-400">Найдите компанию для спорта, отдыха или работы</p>
+        </div>
+        
+        <div class="space-y-3.5">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Категория</label>
+            <select id="field-category" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Заголовок</label>
+            <input type="text" id="field-title" placeholder="например: Ищу +2 на настольный теннис" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Локация</label>
+            <div class="relative">
+              <span class="absolute left-3.5 top-3.5 text-slate-500 text-xs"><i class="fa-solid fa-location-dot"></i></span>
+              <input type="text" id="field-location" placeholder="например: Кентрон, кафе Green Bean" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 pl-9 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Описание</label>
+            <textarea id="field-description" placeholder="Детали встречи, уровень подготовки или пожелания..." class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors h-24 resize-none"></textarea>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Дата и время</label>
+              <input type="datetime-local" id="field-date" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Человек нужно</label>
+              <input type="number" id="field-people" value="2" min="1" max="20" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+          </div>
+
+          <button onclick="submitEvent()" class="w-full btn-gradient text-white font-bold py-3.5 rounded-xl text-sm transition-all duration-200 mt-2 flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-paper-plane text-xs"></i>
+            <span>Опубликовать</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
   </div>
 
-  <!-- Изменено: абсолютный путь /app.js от корня public -->
+  <!-- Bottom Navigation Bar -->
+  <nav class="fixed bottom-0 left-0 right-0 glass-nav px-6 py-2.5 z-50">
+    <div class="max-w-md mx-auto flex justify-around items-center">
+      <button id="tab-feed" onclick="switchTab('feed')" class="flex flex-col items-center space-y-1 text-indigo-400 transition-colors">
+        <i class="fa-solid fa-compass text-lg"></i>
+        <span class="text-[10px] font-semibold">Лента</span>
+      </button>
+      
+      <button id="tab-create" onclick="switchTab('create')" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors">
+        <i class="fa-solid fa-circle-plus text-lg"></i>
+        <span class="text-[10px] font-semibold">Создать</span>
+      </button>
+    </div>
+  </nav>
+
   <script src="/app.js"></script>
 </body>
 </html>
