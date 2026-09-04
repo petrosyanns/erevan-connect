@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path'); // Добавили модуль path
 const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
@@ -21,8 +22,10 @@ const supabase = createClient(
     }
   }
 );
-// Добавьте эту строку перед объявлением маршрутов API
-app.use(express.static('public'));
+
+// Раздаем статические файлы из папки public
+app.use(express.static(path.join(__dirname, 'public')));
+
 // 1. Маршрут: Получить все категории
 app.get('/api/categories', async (req, res) => {
   try {
@@ -87,6 +90,11 @@ app.post('/api/events', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ФАЛЛБЭК: Все прочие GET-запросы отдают index.html (убирает 404 Not Found)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const PORT = process.env.PORT || 5000;
