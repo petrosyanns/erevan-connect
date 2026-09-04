@@ -93,7 +93,8 @@ app.post('/api/events', async (req, res) => {
 });
 
 // ФАЛЛБЭК: Все прочие GET-запросы отдают index.html (убирает 404 Not Found)
-app.get('*', (req, res) => {
+// Стало (совместимо с Express 4 и Express 5 / path-to-regexp v8):
+app.get('/{0,}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
