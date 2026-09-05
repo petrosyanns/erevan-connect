@@ -1,24 +1,27 @@
 const express = require('express');
 const path = require('path');
-const TelegramBotPackage = require('node-telegram-bot-api');
-const TelegramBot = TelegramBotPackage.default || TelegramBotPackage;
+const TelegramBotApi = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
+
+// Гарантированное извлечение конструктора для Node v24
+const TelegramBot = typeof TelegramBotApi === 'function' 
+  ? TelegramBotApi 
+  : (TelegramBotApi.TelegramBot || TelegramBotApi.default);
 
 // 1. Инициализация Express
 const app = express();
 app.use(express.json());
 
-// 2. Настройка бота
+// 2. Настройка переменных и бота
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// 3. Supabase и ID
+// 3. Supabase и твой ID
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MY_TELEGRAM_ID = '766669940';
-
 // 3. Раздача статических файлов из папки public
 app.use(express.static(path.join(__dirname, 'public')));
 
