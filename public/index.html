@@ -60,7 +60,6 @@
         </div>
         <div>
           <div class="flex items-center space-x-1">
-            <!-- Исправленный градиентный текст через чистый Tailwind -->
             <h1 class="text-base font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-rose-400 to-amber-400">
               Erevan Connect
             </h1>
@@ -89,52 +88,12 @@
 
     <!-- 3. Секция 1: ЛЕНТА СОБЫТИЙ -->
     <div id="section-feed" class="space-y-3">
-      
-      <!-- Фильтры категорий -->
-      <div class="flex space-x-2 overflow-x-auto pb-1 scrollbar-none text-xs font-medium">
-        <button class="px-3.5 py-1.5 rounded-xl bg-slate-800 text-indigo-400 font-semibold border border-indigo-500/30 whitespace-nowrap">Все</button>
-        <button class="px-3.5 py-1.5 rounded-xl glass-card text-slate-400 hover:text-white whitespace-nowrap">⚽️ Спорт</button>
-        <button class="px-3.5 py-1.5 rounded-xl glass-card text-slate-400 hover:text-white whitespace-nowrap">☕️ Кофе</button>
-        <button class="px-3.5 py-1.5 rounded-xl glass-card text-slate-400 hover:text-white whitespace-nowrap">🎲 Настолки</button>
-      </div>
-
-      <!-- Контейнер для загрузки объявлений из app.js -->
+      <!-- Контейнер для загрузки объявлений -->
       <div id="events-list" class="space-y-3">
-        <!-- Дефолтная карточка-заглушка до загрузки из Supabase -->
-        <div class="glass-card rounded-2xl p-4 space-y-3">
-          <div class="flex justify-between items-start">
-            <div class="flex items-center space-x-2.5">
-              <div class="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
-                EC
-              </div>
-              <div>
-                <div class="flex items-center space-x-1">
-                  <span class="text-xs font-bold text-slate-200">Erevan Connect Team</span>
-                  <i class="fa-solid fa-circle-check text-[10px] text-indigo-400"></i>
-                </div>
-                <span class="text-[10px] text-slate-400">@erevan_connect</span>
-              </div>
-            </div>
-            
-            <button title="Пожаловаться" class="text-slate-500 hover:text-rose-400 text-xs p-1 transition-colors">
-              <i class="fa-regular fa-flag"></i>
-            </button>
-          </div>
-
-          <div>
-            <h3 class="text-sm font-bold text-white">Добро пожаловать в комьюнити!</h3>
-            <p class="text-xs text-slate-300 mt-1">Создавай свои объявления или откликайся на встречи других участников.</p>
-          </div>
-
-          <div class="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-slate-400">
-            <div class="flex items-center space-x-3">
-              <span><i class="fa-solid fa-location-dot text-rose-400 mr-1"></i> Ереван</span>
-              <span><i class="fa-solid fa-users text-indigo-400 mr-1"></i> ∞</span>
-            </div>
-          </div>
+        <div class="glass-card rounded-2xl p-4 text-center text-xs text-slate-400">
+          Загрузка объявлений...
         </div>
       </div>
-
     </div>
 
     <!-- 4. Секция 2: ФОРМА СОЗДАНИЯ -->
@@ -142,7 +101,7 @@
       <h3 class="text-sm font-bold text-white mb-1">Создать новое объявление</h3>
       
       <div>
-        <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Заголовок</label>
+        <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Заголовок *</label>
         <input type="text" id="event-title" placeholder="Напр. Кофе в Кентроне" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
 
@@ -152,23 +111,25 @@
       </div>
 
       <div>
-        <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Локация</label>
+        <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Локация *</label>
         <input type="text" id="event-location" placeholder="Напр. Каскад или Вернисаж" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
 
-      <button onclick="submitEvent()" class="w-full bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-98">
+      <button id="submit-btn" onclick="submitEvent()" class="w-full bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-98">
         Опубликовать событие
       </button>
     </div>
 
   </div>
 
-  <!-- Подключение app.js и инициализация Telegram WebApp -->
-<script src="app.js?v=2.0"></script>  <script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
 
+    // Переключение табов
     function switchTab(tab) {
       const feedBtn = document.getElementById('tab-feed');
       const createBtn = document.getElementById('tab-create');
@@ -180,6 +141,7 @@
         createBtn.className = "flex-1 py-2.5 rounded-lg text-slate-400 hover:text-white text-center transition-all";
         feedSec.classList.remove('hidden');
         createSec.classList.add('hidden');
+        loadEvents();
       } else {
         createBtn.className = "flex-1 py-2.5 rounded-lg bg-indigo-600 text-white text-center transition-all shadow-md shadow-indigo-600/30";
         feedBtn.className = "flex-1 py-2.5 rounded-lg text-slate-400 hover:text-white text-center transition-all";
@@ -187,6 +149,114 @@
         feedSec.classList.add('hidden');
       }
     }
+
+    // Загрузка объявлений из Supabase
+    async function loadEvents() {
+      const container = document.getElementById('events-list');
+      try {
+        const res = await fetch('/api/events');
+        const result = await res.json();
+
+        if (result.success && result.data.length > 0) {
+          container.innerHTML = result.data.map(event => {
+            const author = event.users?.first_name || 'Участник';
+            const username = event.users?.username ? `@${event.users.username}` : '';
+            return `
+              <div class="glass-card rounded-2xl p-4 space-y-3">
+                <div class="flex justify-between items-start">
+                  <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
+                      ${author.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div class="flex items-center space-x-1">
+                        <span class="text-xs font-bold text-slate-200">${author}</span>
+                      </div>
+                      <span class="text-[10px] text-slate-400">${username}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 class="text-sm font-bold text-white">${event.title}</h3>
+                  <p class="text-xs text-slate-300 mt-1">${event.description || ''}</p>
+                </div>
+
+                <div class="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-slate-400">
+                  <div class="flex items-center space-x-3">
+                    <span><i class="fa-solid fa-location-dot text-rose-400 mr-1"></i> ${event.location}</span>
+                  </div>
+                  <a href="https://t.me/erevan_connect_bot?start=chat_${event.id}" target="_blank" class="bg-indigo-600/80 hover:bg-indigo-600 text-white px-3 py-1 rounded-lg font-semibold text-[10px]">
+                    Откликнуться
+                  </a>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          container.innerHTML = `
+            <div class="glass-card rounded-2xl p-4 text-center text-xs text-slate-400">
+              Пока нет опубликованных событий. Будьте первыми!
+            </div>`;
+        }
+      } catch (err) {
+        container.innerHTML = `<div class="text-center text-rose-400 text-xs">Ошибка загрузки событий</div>`;
+      }
+    }
+
+    // Отправка формы создания события
+    async function submitEvent() {
+      const title = document.getElementById('event-title').value.trim();
+      const desc = document.getElementById('event-desc').value.trim();
+      const location = document.getElementById('event-location').value.trim();
+      const btn = document.getElementById('submit-btn');
+
+      // Безопасное получение user_id из Telegram WebApp
+      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+      const userId = tgUser?.id || '766669940'; // Запасной fallback ID
+
+      if (!title || !location) {
+        alert('⚠️ Пожалуйста, заполните Заголовок и Локацию.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Отправка...';
+
+      try {
+        const response = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            title: title,
+            description: desc,
+            location: location,
+            event_date: new Date().toISOString()
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          alert('🎉 Объявление успешно отправлено на модерацию администратору!');
+          document.getElementById('event-title').value = '';
+          document.getElementById('event-desc').value = '';
+          document.getElementById('event-location').value = '';
+          switchTab('feed');
+        } else {
+          alert('⚠️ Ошибка при создании: ' + (result.error || 'Неизвестная ошибка'));
+        }
+      } catch (err) {
+        alert('❌ Ошибка сети: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Опубликовать событие';
+      }
+    }
+
+    // Первичная загрузка
+    loadEvents();
   </script>
 </body>
 </html>

@@ -3,6 +3,9 @@ const path = require('path');
 const { Telegraf } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 
+// Поддержка сериализации BigInt в JSON (защита от падения Express при BigInt ID)
+BigInt.prototype.toJSON = function() { return this.toString(); };
+
 // 1. Инициализация Express
 const app = express();
 app.use(express.json());
@@ -26,56 +29,90 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Получение списка категорий
 app.get('/api/categories', async (req, res) => {
-  const { data, error } = await supabase.from('categories').select('*');
-  if (error) return res.status(500).json({ success: false, error: error.message });
-  res.json({ success: true, data });
+  try {
+    const { data, error } = await supabase.from('categories').select('*');
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Получение только ОДОБРЕННЫХ событий для ленты
 app.get('/api/events', async (req, res) => {
-  const { data, error } = await supabase
-    .from('events')
-    .select('*, categories(name_ru, icon), users(first_name, username)')
-    .eq('status', 'approved')
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*, users(first_name, username)')
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false });
 
-  if (error) return res.status(500).json({ success: false, error: error.message });
-  res.json({ success: true, data });
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Создание нового объявления из Mini App (отправка на модерацию)
 app.post('/api/events', async (req, res) => {
-  const { user_id, category_id, title, description, location, event_date, max_people } = req.body;
+  try {
+    const { user_id, category_id, title, description, location, event_date, max_people } = req.body;
 
-  if (!user_id || !title || !location || !event_date) {
-    return res.status(400).json({ success: false, error: 'Заполните обязательные поля' });
-  }
+    if (!user_id || !title || !location) {
+      return res.status(400).json({ success: false, error: 'Заполните обязательные поля (Заголовок и Локацию)' });
+    }
 
-  const { data, error } = await supabase
-    .from('events')
-    .insert([{
-      user_id: BigInt(user_id),
-      category_id: parseInt(category_id),
-      title,
-      description: description || '',
-      location,
-      event_date,
+    const userIdBigInt = BigInt(user_id);
+
+    // Гарантируем, что пользователь существует в базе
+    await supabase.from('users').upsert({
+      telegram_id: userIdBigInt,
+      first_name: 'Пользователь',
+      username: ''
+    }, { onConflict: 'telegram_id' });
+
+    const validDate = event_date ? new Date(event_date).toISOString() : new Date().toISOString();
+
+    const insertPayload = {
+      user_id: userIdBigInt,
+      title: title.trim(),
+      description: description ? description.trim() : '',
+      location: location.trim(),
+      event_date: validDate,
       max_people: parseInt(max_people) || 2,
       status: 'pending' // Статус ожидания модерации
-    }])
-    .select('*, categories(name_ru, icon)')
-    .single();
+    };
 
-  if (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    if (category_id) {
+      insertPayload.category_id = parseInt(category_id);
+    }
+
+    const { data, error } = await supabase
+      .from('events')
+      .insert([insertPayload])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Ошибка записи в Supabase:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    // Уведомляем администратора о новом объявлении
+    if (bot) {
+      try {
+        await notifyAdminForModeration(data);
+      } catch (modErr) {
+        console.error('Ошибка отправки на модерацию:', modErr);
+      }
+    }
+
+    res.json({ success: true, message: 'Объявление отправлено на модерацию!', data });
+  } catch (err) {
+    console.error('Критическая ошибка /api/events:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
-
-  // Уведомляем администратора о новом объявлении
-  if (bot) {
-    await notifyAdminForModeration(data);
-  }
-
-  res.json({ success: true, message: 'Объявление отправлено на модерацию!', data });
 });
 
 // ==========================================
@@ -96,7 +133,7 @@ if (token) {
     // 1. Авто-регистрация / обновление пользователя
     try {
       await supabase.from('users').upsert({
-        telegram_id: user.id,
+        telegram_id: BigInt(user.id),
         first_name: user.first_name || '',
         username: user.username || '',
         language_code: user.language_code || 'ru'
@@ -176,7 +213,7 @@ if (token) {
     if (!error && event) {
       await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✅ *ОДОБРЕНО И ОПУБЛИКОВАНО*`, { parse_mode: 'Markdown' });
       try {
-        await bot.telegram.sendMessage(event.user_id, `🎉 Ваше объявление *"${event.title}"* прошло модерацию и опубликовано!`, { parse_mode: 'Markdown' });
+        await bot.telegram.sendMessage(event.user_id.toString(), `🎉 Ваше объявление *"${event.title}"* прошло модерацию и опубликовано!`, { parse_mode: 'Markdown' });
       } catch (e) {}
     }
   });
@@ -196,7 +233,7 @@ if (token) {
     if (!error && event) {
       await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n❌ *ОТКЛОНЕНО*`, { parse_mode: 'Markdown' });
       try {
-        await bot.telegram.sendMessage(event.user_id, `😔 Ваше объявление *"${event.title}"* не прошло модерацию.`, { parse_mode: 'Markdown' });
+        await bot.telegram.sendMessage(event.user_id.toString(), `😔 Ваше объявление *"${event.title}"* не прошло модерацию.`, { parse_mode: 'Markdown' });
       } catch (e) {}
     }
   });
@@ -216,15 +253,15 @@ if (token) {
         // Сохраняем сообщение в базу
         await supabase.from('messages').insert([{
           event_id: event.id,
-          sender_id: ctx.from.id,
-          receiver_id: event.user_id,
+          sender_id: BigInt(ctx.from.id),
+          receiver_id: BigInt(event.user_id),
           text: ctx.message.text
         }]);
 
         // Отправляем сообщение автору объявления
         try {
           await bot.telegram.sendMessage(
-            event.user_id,
+            event.user_id.toString(),
             `📩 *Новый отклик на ваше объявление "${event.title}":*\n\n` +
             `"${ctx.message.text}"\n\n` +
             `_Чтобы ответить, используйте юзернейм: @${ctx.from.username || 'скрыт'}_`,
@@ -248,16 +285,13 @@ if (token) {
 
 // Функция отправки уведомления администратору на модерацию
 async function notifyAdminForModeration(event) {
-  const categoryName = event.categories ? `${event.categories.icon} ${event.categories.name_ru}` : 'Без категории';
   const message = 
     `🆕 *Новое объявление на модерацию! (ID: ${event.id})*\n` +
     `═══════════════════\n` +
     `📌 *Заголовок:* ${event.title}\n` +
-    `📂 *Категория:* ${categoryName}\n` +
     `📝 *Описание:* ${event.description || 'Без описания'}\n` +
     `📍 *Локация:* ${event.location}\n` +
     `📅 *Дата:* ${new Date(event.event_date).toLocaleString('ru-RU')}\n` +
-    `👥 *Мест:* ${event.max_people}\n` +
     `👤 *Автор ID:* \`${event.user_id}\``;
 
   await bot.telegram.sendMessage(MY_TELEGRAM_ID, message, {
