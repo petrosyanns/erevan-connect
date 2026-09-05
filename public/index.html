@@ -4,163 +4,161 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Erevan Connect</title>
+  
+  <!-- Telegram Web App SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <!-- Tailwind CSS & FontAwesome -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-    
-    body {
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      background-color: #0F172A;
-      color: #F8FAFC;
-      -webkit-tap-highlight-color: transparent;
-    }
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] },
+          colors: {
+            tuff: { 400: '#FB923C', 500: '#F43F5E', 600: '#E11D48' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Glassmorphic эффекты и анимации */
     .glass-card {
       background: rgba(30, 41, 59, 0.7);
       backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255, 255, 255, 0.08);
     }
-
-    .glass-nav {
-      background: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
     .gradient-text {
-      background: linear-gradient(135deg, #6366F1 0%, #A855F7 100%);
+      background: linear-gradient(135deg, #818CF8 0%, #F43F5E 50%, #FB923C 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
-
-    .btn-gradient {
-      background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
-      box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.5);
-    }
-
-    .btn-gradient:active {
-      transform: scale(0.98);
-    }
-
-    /* Кастомный скроллбар */
-    ::-webkit-scrollbar {
-      width: 0px;
-      background: transparent;
+    .pulse-glow {
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.35);
     }
   </style>
 </head>
-<body class="pb-24 pt-4 px-4 min-h-screen antialiased selection:bg-indigo-500 selection:text-white">
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen pb-20 select-none">
 
-  <div id="app" class="max-w-md mx-auto space-y-5">
-    
-    <!-- Header -->
-    <header class="flex justify-between items-center bg-slate-800/50 p-3.5 px-4 rounded-2xl border border-white/5 backdrop-blur-md">
-      <div class="flex items-center space-x-2.5">
-        <div class="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-lg">
-          🇦🇲
+  <div class="max-w-md mx-auto px-4 py-4 space-y-4">
+
+    <!-- 1. Header с индикатором и кнопкой Канала -->
+    <header class="flex justify-between items-center glass-card p-3.5 px-4 rounded-2xl shadow-xl">
+      <div class="flex items-center space-x-3">
+        <div class="relative">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 p-[1px]">
+            <div class="w-full h-full bg-slate-900 rounded-[11px] flex items-center justify-center text-lg">
+              🇦🇲
+            </div>
+          </div>
+          <!-- Живая точка онлайна -->
+          <span class="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-950"></span>
+          </span>
         </div>
         <div>
-          <h1 class="text-base font-extrabold tracking-tight gradient-text">Erevan Connect</h1>
-          <p class="text-[10px] text-slate-400 font-medium">Партнеры и события в Ереване</p>
+          <div class="flex items-center space-x-1">
+            <h1 class="text-base font-extrabold tracking-tight gradient-text">Erevan Connect</h1>
+            <i class="fa-solid fa-circle-check text-indigo-400 text-xs" title="Official App"></i>
+          </div>
+          <p class="text-[10px] text-slate-400 font-medium">Комьюнити & Встречи</p>
         </div>
       </div>
-      <div class="flex items-center space-x-2 bg-slate-900/60 px-3 py-1.5 rounded-full border border-white/5">
-        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span id="user-name" class="text-xs font-semibold text-slate-300">Гость</span>
-      </div>
+
+      <!-- Кнопка на Канал -->
+      <a href="https://t.me/erevan_connect" target="_blank" class="flex items-center space-x-1.5 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-400 hover:bg-indigo-500/20 transition-all active:scale-95">
+        <i class="fa-brands fa-telegram text-sm"></i>
+        <span>Канал</span>
+      </a>
     </header>
 
-    <!-- SECTION 1: FEED -->
-    <main id="section-feed" class="space-y-3">
-      <div class="flex items-center justify-between px-1">
-        <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider text-[11px]">Активные события</h2>
-        <span class="text-xs text-indigo-400 font-medium hover:underline cursor-pointer" onclick="loadEvents()">Обновить</span>
-      </div>
-      
-      <div id="events-list" class="space-y-3">
-        <!-- Карточки загружаются динамически -->
-        <div class="glass-card p-8 rounded-2xl text-center space-y-3">
-          <div class="inline-block animate-spin text-indigo-500 text-2xl">
-            <i class="fa-solid fa-circle-notch"></i>
-          </div>
-          <p class="text-xs text-slate-400 font-medium">Загрузка актуальных объявлений...</p>
+    <!-- 2. Промо-Баннер доверия -->
+    <div class="relative overflow-hidden glass-card rounded-2xl p-4 border border-rose-500/20 bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-indigo-500/10">
+      <div class="flex justify-between items-center relative z-10">
+        <div class="space-y-1 max-w-[220px]">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+            Безопасно & Проверено
+          </span>
+          <h2 class="text-sm font-bold text-white">Находи компанию в Ереване</h2>
+          <p class="text-xs text-slate-300">Все профили верифицированы через Telegram</p>
         </div>
+        <div class="text-3xl">🤝</div>
       </div>
-    </main>
+    </div>
 
-    <!-- SECTION 2: CREATE FORM -->
-    <main id="section-create" class="hidden space-y-4">
-      <div class="glass-card p-5 rounded-3xl space-y-4">
-        <div class="border-b border-white/10 pb-3">
-          <h2 class="text-base font-bold text-white">Создать объявление</h2>
-          <p class="text-xs text-slate-400">Найдите компанию для спорта, отдыха или работы</p>
-        </div>
-        
-        <div class="space-y-3.5">
-          <div>
-            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Категория</label>
-            <select id="field-category" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
-            </select>
-          </div>
+    <!-- 3. Фильтры Категорий -->
+    <div class="flex space-x-2 overflow-x-auto pb-1 scrollbar-none text-xs font-medium">
+      <button class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white font-semibold shadow-lg shadow-indigo-600/30 whitespace-nowrap">🔥 Все события</button>
+      <button class="px-3.5 py-2 rounded-xl glass-card text-slate-300 hover:text-white whitespace-nowrap">⚽️ Спорт</button>
+      <button class="px-3.5 py-2 rounded-xl glass-card text-slate-300 hover:text-white whitespace-nowrap">☕️ Кофе & Чат</button>
+      <button class="px-3.5 py-2 rounded-xl glass-card text-slate-300 hover:text-white whitespace-nowrap">🎲 Настолки</button>
+    </div>
 
-          <div>
-            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Заголовок</label>
-            <input type="text" id="field-title" placeholder="например: Ищу +2 на настольный теннис" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
-          </div>
-
-          <div>
-            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Локация</label>
-            <div class="relative">
-              <span class="absolute left-3.5 top-3.5 text-slate-500 text-xs"><i class="fa-solid fa-location-dot"></i></span>
-              <input type="text" id="field-location" placeholder="например: Кентрон, кафе Green Bean" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 pl-9 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Описание</label>
-            <textarea id="field-description" placeholder="Детали встречи, уровень подготовки или пожелания..." class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors h-24 resize-none"></textarea>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Дата и время</label>
-              <input type="datetime-local" id="field-date" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
+    <!-- 4. Список событий (Лента) -->
+    <div id="events-container" class="space-y-3">
+      <!-- Пример карточки встречи с кнопкой Жалобы -->
+      <div class="glass-card rounded-2xl p-4 space-y-3 hover:border-slate-700 transition-all">
+        <div class="flex justify-between items-start">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
+              СП
             </div>
             <div>
-              <label class="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Человек нужно</label>
-              <input type="number" id="field-people" value="2" min="1" max="20" class="w-full bg-slate-900/80 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors">
+              <div class="flex items-center space-x-1">
+                <span class="text-xs font-bold text-slate-200">Семён</span>
+                <i class="fa-solid fa-circle-check text-[10px] text-indigo-400"></i>
+              </div>
+              <span class="text-[10px] text-slate-400">@semyon_dev</span>
             </div>
           </div>
+          
+          <!-- Кнопка жалобы/модерации -->
+          <button title="Пожаловаться" class="text-slate-500 hover:text-rose-400 text-xs p-1 transition-colors">
+            <i class="fa-regular fa-flag"></i>
+          </button>
+        </div>
 
-          <button onclick="submitEvent()" class="w-full btn-gradient text-white font-bold py-3.5 rounded-xl text-sm transition-all duration-200 mt-2 flex items-center justify-center space-x-2">
-            <i class="fa-solid fa-paper-plane text-xs"></i>
-            <span>Опубликовать</span>
+        <div>
+          <h3 class="text-sm font-bold text-white">Кофе & Нетворкинг в Кентроне</h3>
+          <p class="text-xs text-slate-300 mt-1 line-clamp-2">Ищем еще +2 человек обсудить стартапы и IT в Ереване. Встречаемся возле Каскада.</p>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-slate-400">
+          <div class="flex items-center space-x-3">
+            <span><i class="fa-solid fa-location-dot text-rose-400 mr-1"></i> Cascade</span>
+            <span><i class="fa-solid fa-users text-indigo-400 mr-1"></i> 2 / 4</span>
+          </div>
+          <button class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-md shadow-indigo-600/20">
+            Отклинуться
           </button>
         </div>
       </div>
-    </main>
+    </div>
 
   </div>
 
-  <!-- Bottom Navigation Bar -->
-  <nav class="fixed bottom-0 left-0 right-0 glass-nav px-6 py-2.5 z-50">
-    <div class="max-w-md mx-auto flex justify-around items-center">
-      <button id="tab-feed" onclick="switchTab('feed')" class="flex flex-col items-center space-y-1 text-indigo-400 transition-colors">
-        <i class="fa-solid fa-compass text-lg"></i>
-        <span class="text-[10px] font-semibold">Лента</span>
-      </button>
-      
-      <button id="tab-create" onclick="switchTab('create')" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200 transition-colors">
-        <i class="fa-solid fa-circle-plus text-lg"></i>
-        <span class="text-[10px] font-semibold">Создать</span>
-      </button>
-    </div>
-  </nav>
+  <!-- 5. Нижняя плавающая кнопка "Создать событие" -->
+  <div class="fixed bottom-4 left-0 right-0 px-4 max-w-md mx-auto">
+    <button onclick="Telegram.WebApp.expand()" class="w-full bg-gradient-to-r from-rose-500 via-indigo-600 to-indigo-700 text-white py-3.5 px-4 rounded-2xl font-bold text-sm shadow-xl pulse-glow active:scale-98 transition-all flex items-center justify-center space-x-2">
+      <i class="fa-solid fa-plus text-xs"></i>
+      <span>Создать встречу</span>
+    </button>
+  </div>
 
-  <script src="/app.js"></script>
+  <script>
+    // Инициализация Telegram WebApp SDK
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+  </script>
 </body>
 </html>

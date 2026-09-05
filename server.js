@@ -1,102 +1,113 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const path = require('path'); // Добавили модуль path
-const { createClient } = require('@supabase/supabase-js');
-const WebSocket = require('ws');
+// ВАШ TELEGRAM ID (Получен через @userinfobot)
+const MY_TELEGRAM_ID = 766669940; 
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+// 1. КОМАНДА /start — Премиальное приветствие с интерактивным меню
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  const firstName = msg.from.first_name ? msg.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
 
-// Инициализация Supabase с передачей WebSocket реализации
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY,
-  {
-    auth: { 
-      persistSession: false 
+  const welcomeMessage = 
+    `✨ **Բարև, ${firstName}! Добро пожаловать в Erevan Connect!**\n\n` +
+    `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
+    `Находи компанию для кофе в Кентроне, +1 на футбол или партнеров для проектов в пару кликов!`;
+
+  // Клавиатура прямо в чате (Inline Keyboard)
+  const inlineKeyboard = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '🚀 Открыть Erevan Connect', web_app: { url: process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com' } }
+        ],
+        [
+          { text: '📢 Наш Канал', url: 'https://t.me/erevan_connect' },
+          { text: '💬 Поддержка', url: 'https://t.me/erevan_connect_support' }
+        ]
+      ]
     },
-    realtime: {
-      transport: WebSocket
-    }
-  }
-);
+    parse_mode: 'Markdown'
+  };
 
-// Раздаем статические файлы из папки public
-app.use(express.static(path.join(__dirname, 'public')));
-
-// 1. Маршрут: Получить все категории
-app.get('/api/categories', async (req, res) => {
-  try {
-    const { data, error } = await supabase.from('categories').select('*');
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  bot.sendMessage(chatId, welcomeMessage, inlineKeyboard);
 });
 
-// 2. Маршрут: Получить список активных объявлений
-app.get('/api/events', async (req, res) => {
+// 2. АДМИН-КОМАНДА /users — Полноценный отчет с кнопкой быстрого обновления
+bot.onText(/\/users/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  // Проверка прав доступа
+  if (msg.from.id.toString() !== MY_TELEGRAM_ID) {
+    return bot.sendMessage(chatId, '⛔️ *Доступ ограничен.* Эта команда только для администратора.', { parse_mode: 'Markdown' });
+  }
+
+  await sendAdminReport(chatId);
+});
+
+// Функция формирования и отправки админ-отчета
+async function sendAdminReport(chatId, messageId = null) {
   try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*, users(username, first_name), categories(name_ru, icon)')
-      .eq('status', 'active')
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    if (error) throw error;
 
-// 3. Маршрут: Создать новое объявление
-app.post('/api/events', async (req, res) => {
-  try {
-    const { user, event } = req.body;
+    const totalUsers = users.length;
+    const usersWithUsername = users.filter(u => u.username).length;
+    const now = new Date();
+    const last24h = users.filter(u => {
+      const createdAt = new Date(u.created_at);
+      return (now - createdAt) < (24 * 60 * 60 * 1000);
+    }).length;
 
-    if (!user || !event) {
-      return res.status(400).json({ error: 'Неполные данные' });
-    }
+    let message = `📊 **Erevan Connect | Dashboard**\n`;
+    message += `═══════════════════\n`;
+    message += `👥 **Всего участников:** \`${totalUsers}\`\n`;
+    message += `🔥 **Прирост за 24ч:** \`+${last24h}\`\n`;
+    message += `💬 **С юзернеймом:** \`${usersWithUsername}/${totalUsers}\`\n`;
+    message += `═══════════════════\n\n`;
+    message += `📋 **Свежие регистрации:**\n\n`;
 
-    // Сохраняем или обновляем пользователя
-    await supabase.from('users').upsert({
-      telegram_id: user.telegram_id,
-      username: user.username,
-      first_name: user.first_name
+    const recentUsers = users.slice(0, 10);
+    recentUsers.forEach((u, index) => {
+      const name = u.first_name ? u.first_name.replace(/[*_`\[\]]/g, '') : 'Без имени';
+      const username = u.username ? `@${u.username}` : '❌ *нет юзернейма*';
+      const date = new Date(u.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+      message += `${index + 1}. **${name}** | ${username} \`[${date}]\`\n`;
     });
 
-    // Создаем объявление
-    const { data, error } = await supabase
-      .from('events')
-      .insert([
-        {
-          user_id: user.telegram_id,
-          category_id: event.category_id,
-          title: event.title,
-          description: event.description,
-          location: event.location,
-          event_date: event.event_date,
-          max_people: event.max_people
-        }
-      ])
-      .select();
+    if (totalUsers > 10) {
+      message += `\n*...и еще ${totalUsers - 10} пользователей.*`;
+    }
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ success: true, data });
+    // Админская клавиатура с кнопкой "Обновить"
+    const adminKeyboard = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Обновить данные', callback_data: 'admin_refresh' }],
+          [{ text: '🌐 Открыть Mini App', web_app: { url: process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com' } }]
+        ]
+      },
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    };
+
+    if (messageId) {
+      bot.editMessageText(message, { chat_id: chatId, message_id: messageId, ...adminKeyboard });
+    } else {
+      bot.sendMessage(chatId, message, adminKeyboard);
+    }
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Ошибка админ-отчета:', err);
+    bot.sendMessage(chatId, '⚠️ Ошибка при формировании отчета.');
+  }
+}
+
+// 3. ОБРАБОТКА КНОПКИ "ОБНОВИТЬ" (Callback Query)
+bot.on('callback_query', async (query) => {
+  if (query.data === 'admin_refresh' && query.from.id.toString() === MY_TELEGRAM_ID) {
+    await sendAdminReport(query.message.chat.id, query.message.message_id);
+    bot.answerCallbackQuery(query.id, { text: 'Данные обновлены! 🚀' });
   }
 });
-
-// ФАЛЛБЭК: Все прочие GET-запросы отдают index.html (убирает 404 Not Found)
-// Стало (совместимо с Express 4 и Express 5 / path-to-regexp v8):
-app.get('/{0,}', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Сервер запущен на порту ${PORT}`));
