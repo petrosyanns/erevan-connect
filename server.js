@@ -65,12 +65,20 @@ app.post('/api/events', async (req, res) => {
 
     const userIdBigInt = BigInt(user_id);
 
-    // Гарантируем, что пользователь существует в базе
-    await supabase.from('users').upsert({
-      telegram_id: userIdBigInt,
-      first_name: 'Пользователь',
-      username: ''
-    }, { onConflict: 'telegram_id' });
+    // Гарантируем, что пользователь существует в базе с актуальным именем/username
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('username, first_name')
+      .eq('telegram_id', userIdBigInt)
+      .single();
+
+    if (!existingUser) {
+      await supabase.from('users').upsert({
+        telegram_id: userIdBigInt,
+        first_name: '',
+        username: ''
+      }, { onConflict: 'telegram_id' });
+    }
 
     const validDate = event_date ? new Date(event_date).toISOString() : new Date().toISOString();
 
@@ -127,7 +135,7 @@ if (token) {
   // Команда /start (поддерживает обычный запуск и переход к чату по объявлению)
   bot.command('start', async (ctx) => {
     const user = ctx.from;
-    const firstName = user.first_name ? user.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
+    const displayName = user.username ? `@${user.username}` : (user.first_name || 'Друг');
     const startParam = ctx.message.text.split(' ')[1];
 
     // 1. Авто-регистрация / обновление пользователя
@@ -165,7 +173,7 @@ if (token) {
 
     // Стандартное приветствие
     const welcomeMessage = 
-      `✨ *Привет, ${firstName}! Добро пожаловать в Erevan Connect!*\n\n` +
+      `✨ *Привет, ${displayName}! Добро пожаловать в Erevan Connect!*\n\n` +
       `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
       `Находи компанию для кофе в Кентроне, +1 на футбол или партнеров для проектов в пару кликов!`;
 
@@ -261,7 +269,9 @@ if (token) {
           text: ctx.message.text
         }]);
 
-        const senderUsername = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || 'Пользователь');
+        const senderUsername = ctx.from.username 
+          ? `@${ctx.from.username}` 
+          : (ctx.from.first_name || 'Без username');
 
         // Отправляем сообщение автору объявления
         try {
@@ -292,7 +302,7 @@ if (token) {
 async function notifyAdminForModeration(event) {
   const authorInfo = event.users?.username 
     ? `@${event.users.username}` 
-    : (event.users?.first_name || `ID: \`${event.user_id}\``);
+    : (event.users?.first_name ? `${event.users.first_name}` : `ID: \`${event.user_id}\``);
 
   const message = 
     `🆕 *Новое объявление на модерацию!*\n` +
