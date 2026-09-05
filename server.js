@@ -28,7 +28,7 @@ if (token) {
   bot.command('start', (ctx) => {
     const firstName = ctx.from.first_name ? ctx.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
     const welcomeMessage = 
-      `✨ *Բարև, ${firstName}! Добро пожаловать в Erevan Connect!*\n\n` +
+      `✨ *Привет, ${firstName}! Добро пожаловать в Erevan Connect!*\n\n` +
       `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
       `Находи компанию для кофе в Кентроне, +1 на футбол или партнеров для проектов в пару кликов!`;
 
