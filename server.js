@@ -1,95 +1,77 @@
 const express = require('express');
 const path = require('path');
-const TelegramBotModule = require('node-telegram-bot-api');
+const { Telegraf } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
-
-// Безопасное извлечение конструктора TelegramBot
-const TelegramBot = typeof TelegramBotModule === 'function'
-  ? TelegramBotModule
-  : (TelegramBotModule.TelegramBot || TelegramBotModule.default || TelegramBotModule);
 
 // 1. Инициализация Express
 const app = express();
 app.use(express.json());
 
-// 2. Настройка бота
-const token = process.env.BOT_TOKEN;
-let bot = null;
-
-if (!token) {
-  console.error('❌ ОШИБКА: Переменная окружения BOT_TOKEN не установлена в Render!');
-} else {
-  try {
-    bot = new TelegramBot(token, { polling: true });
-    console.log('✅ Telegram Bot успешно запущен');
-  } catch (err) {
-    console.error('❌ Ошибка инициализации TelegramBot:', err.message);
-  }
-}
-
-// 3. Supabase и Admin ID
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+// 2. Инициализация Supabase с фоллбэком (не роняет сервер, если нет ключа)
+const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || 'placeholder-key';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MY_TELEGRAM_ID = '766669940';
 
-// 4. Раздача статических файлов из папки public
+// 3. Раздача статических файлов out of public/
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Обработчики бота (регистрируем только если бот успешно создан)
-if (bot) {
-  // 5. КОМАНДА /start — Приветствие пользователей
-  bot.onText(/\/start/, async (msg) => {
-    const chatId = msg.chat.id;
-    const firstName = msg.from.first_name ? msg.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
+// 4. Инициализация Telegraf
+const token = process.env.BOT_TOKEN;
+let bot = null;
 
+if (token) {
+  bot = new Telegraf(token);
+
+  // Команда /start
+  bot.command('start', (ctx) => {
+    const firstName = ctx.from.first_name ? ctx.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
     const welcomeMessage = 
-      `✨ **Բարև, ${firstName}! Добро пожаловать в Erevan Connect!**\n\n` +
+      `✨ *Բարև, ${firstName}! Добро пожаловать в Erevan Connect!*\n\n` +
       `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
       `Находи компанию для кофе в Кентроне, +1 на футбол или партнеров для проектов в пару кликов!`;
 
-    const inlineKeyboard = {
+    const webAppUrl = process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com';
+
+    ctx.replyWithMarkdown(welcomeMessage, {
       reply_markup: {
         inline_keyboard: [
-          [
-            { text: '🚀 Открыть Erevan Connect', web_app: { url: process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com' } }
-          ],
+          [{ text: '🚀 Открыть Erevan Connect', web_app: { url: webAppUrl } }],
           [
             { text: '📢 Наш Канал', url: 'https://t.me/erevan_connect' },
             { text: '💬 Поддержка', url: 'https://t.me/erevan_connect_support' }
           ]
         ]
-      },
-      parse_mode: 'Markdown'
-    };
-
-    bot.sendMessage(chatId, welcomeMessage, inlineKeyboard);
+      }
+    });
   });
 
-  // 6. КОМАНДА /users — Административная аналитика
-  bot.onText(/\/users/, async (msg) => {
-    const chatId = msg.chat.id;
-
-    if (msg.from.id.toString() !== MY_TELEGRAM_ID) {
-      return bot.sendMessage(chatId, '⛔️ *Доступ ограничен.* Эта команда только для администратора.', { parse_mode: 'Markdown' });
+  // Команда /users (Админ)
+  bot.command('users', async (ctx) => {
+    if (ctx.from.id.toString() !== MY_TELEGRAM_ID) {
+      return ctx.reply('⛔️ Доступ ограничен. Эта команда только для администратора.');
     }
-
-    await sendAdminReport(chatId);
+    await sendAdminReport(ctx);
   });
 
-  // 7. Обработка нажатий на инлайн-кнопки
-  bot.on('callback_query', async (query) => {
-    if (query.data === 'admin_refresh' && query.from.id.toString() === MY_TELEGRAM_ID) {
-      await sendAdminReport(query.message.chat.id, query.message.message_id);
-      bot.answerCallbackQuery(query.id, { text: 'Данные обновлены! 🚀' });
-    }
+  // Обработка кнопки обновления
+  bot.action('admin_refresh', async (ctx) => {
+    if (ctx.from.id.toString() !== MY_TELEGRAM_ID) return;
+    await sendAdminReport(ctx, true);
+    ctx.answerCbQuery('Данные обновлены! 🚀');
   });
+
+  // Запуск бота
+  bot.launch().then(() => console.log('✅ Telegram Bot успешно запущен (Telegraf)')).catch(err => {
+    console.error('❌ Ошибка запуска бота:', err.message);
+  });
+} else {
+  console.error('❌ BOT_TOKEN не задан в переменных окружения.');
 }
 
-// Функция формирования и отправки админ-отчета
-async function sendAdminReport(chatId, messageId = null) {
-  if (!bot) return;
+// Функция формирования админ-отчета
+async function sendAdminReport(ctx, isEdit = false) {
   try {
     const { data: users, error } = await supabase
       .from('users')
@@ -103,56 +85,51 @@ async function sendAdminReport(chatId, messageId = null) {
     const now = new Date();
     const last24h = users ? users.filter(u => (now - new Date(u.created_at)) < (24 * 60 * 60 * 1000)).length : 0;
 
-    let message = `📊 **Erevan Connect | Dashboard**\n`;
+    let message = `📊 *Erevan Connect | Dashboard*\n`;
     message += `═══════════════════\n`;
-    message += `👥 **Всего участников:** \`${totalUsers}\`\n`;
-    message += `🔥 **Прирост за 24ч:** \`+${last24h}\`\n`;
-    message += `💬 **С юзернеймом:** \`${usersWithUsername}/${totalUsers}\`\n`;
+    message += `👥 *Всего участников:* \`${totalUsers}\`\n`;
+    message += `🔥 *Прирост за 24ч:* \`+${last24h}\`\n`;
+    message += `💬 *С юзернеймом:* \`${usersWithUsername}/${totalUsers}\`\n`;
     message += `═══════════════════\n\n`;
-    message += `📋 **Свежие регистрации:**\n\n`;
+    message += `📋 *Свежие регистрации:*\n\n`;
 
     const recentUsers = users ? users.slice(0, 10) : [];
     recentUsers.forEach((u, index) => {
       const name = u.first_name ? u.first_name.replace(/[*_`\[\]]/g, '') : 'Без имени';
       const username = u.username ? `@${u.username}` : '❌ *нет юзернейма*';
       const date = new Date(u.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-      message += `${index + 1}. **${name}** | ${username} \`[${date}]\`\n`;
+      message += `${index + 1}. *${name}* | ${username} \`[${date}]\`\n`;
     });
 
-    if (totalUsers > 10) {
-      message += `\n*...и еще ${totalUsers - 10} пользователей.*`;
-    }
-
-    const adminKeyboard = {
+    const webAppUrl = process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com';
+    const extra = {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
           [{ text: '🔄 Обновить данные', callback_data: 'admin_refresh' }],
-          [{ text: '🌐 Открыть Mini App', web_app: { url: process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com' } }]
+          [{ text: '🌐 Открыть Mini App', web_app: { url: webAppUrl } }]
         ]
-      },
-      parse_mode: 'Markdown',
-      disable_web_page_preview: true
+      }
     };
 
-    if (messageId) {
-      bot.editMessageText(message, { chat_id: chatId, message_id: messageId, ...adminKeyboard });
+    if (isEdit) {
+      await ctx.editMessageText(message, extra);
     } else {
-      bot.sendMessage(chatId, message, adminKeyboard);
+      await ctx.reply(message, extra);
     }
-
   } catch (err) {
     console.error('Ошибка админ-отчета:', err);
-    bot.sendMessage(chatId, '⚠️ Ошибка при формировании отчета.');
+    ctx.reply('⚠️ Ошибка при формировании отчета.');
   }
 }
 
-// 8. Маршрут для отдачи приложения Mini App
+// 5. Маршрут для отдачи Mini App
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 9. Запуск сервера
+// 6. Запуск сервера Express
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
