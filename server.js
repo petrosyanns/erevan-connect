@@ -9,7 +9,7 @@ app.use(express.json());
 
 // 2. Инициализация Supabase с фоллбэком (не роняет сервер, если нет ключа)
 const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || 'placeholder-key';
+const supabaseKey = process.env.SUPABASE_KEY || 'placeholder-key';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MY_TELEGRAM_ID = '766669940';
