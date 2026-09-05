@@ -124,7 +124,7 @@ async function sendAdminReport(ctx, isEdit = false) {
 }
 
 // 5. Маршрут для отдачи Mini App
-app.get('*', (req, res) => {
+app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
