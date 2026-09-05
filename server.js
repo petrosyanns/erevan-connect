@@ -1,22 +1,23 @@
 const express = require('express');
 const path = require('path');
-const TelegramBot = require('node-telegram-bot-api');
+const TelegramBotPackage = require('node-telegram-bot-api');
+const TelegramBot = TelegramBotPackage.default || TelegramBotPackage;
 const { createClient } = require('@supabase/supabase-js');
 
 // 1. Инициализация Express
 const app = express();
 app.use(express.json());
 
-// 2. Настройка переменных окружения и подключения
+// 2. Настройка бота
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
+// 3. Supabase и ID
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Твой личный Telegram ID для доступа к админке
-const MY_TELEGRAM_ID = '766669940'; 
+const MY_TELEGRAM_ID = '766669940';
 
 // 3. Раздача статических файлов из папки public
 app.use(express.static(path.join(__dirname, 'public')));
