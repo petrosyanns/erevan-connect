@@ -29,7 +29,7 @@ if (token) {
     const user = ctx.from;
     const firstName = user.first_name ? user.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
 
-    // Запись / обновление пользователя в Supabase под структуру SQL
+    // Запись / обновление пользователя в Supabase
     try {
       const { error } = await supabase.from('users').upsert({
         telegram_id: user.id,
@@ -91,7 +91,7 @@ if (token) {
 // Функция формирования админ-отчета
 async function sendAdminReport(ctx, isEdit = false) {
   try {
-    // 1. Получаем пользователей
+    // 1. Получаем пользователей из вашей таблицы
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('*')
@@ -99,7 +99,7 @@ async function sendAdminReport(ctx, isEdit = false) {
 
     if (usersError) throw usersError;
 
-    // 2. Безопасный запрос количества событий
+    // 2. Запрос количества активных событий
     let eventsCount = 0;
     try {
       const { count, error: eventsError } = await supabase
@@ -156,8 +156,6 @@ async function sendAdminReport(ctx, isEdit = false) {
     }
   } catch (err) {
     console.error('Ошибка админ-отчета (детали):', err);
-    
-    // Формируем информативный текст ошибки для отладки
     const details = err.message || JSON.stringify(err);
     const errorMsg = `⚠️ *Ошибка при формировании отчета.*\n\n*Детали:* \`${details}\``;
     
