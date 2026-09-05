@@ -3,8 +3,10 @@ const path = require('path');
 const TelegramBotModule = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
 
-// Безопасное извлечение конструктора для Node.js v24+
-const TelegramBot = TelegramBotModule.default || TelegramBotModule.TelegramBot || TelegramBotModule;
+// Безопасное извлечение конструктора TelegramBot
+const TelegramBot = typeof TelegramBotModule === 'function'
+  ? TelegramBotModule
+  : (TelegramBotModule.TelegramBot || TelegramBotModule.default || TelegramBotModule);
 
 // 1. Инициализация Express
 const app = express();
@@ -12,11 +14,18 @@ app.use(express.json());
 
 // 2. Настройка бота
 const token = process.env.BOT_TOKEN;
-if (!token) {
-  console.error('⚠️ BOT_TOKEN не найден в переменной окружения!');
-}
+let bot = null;
 
-const bot = new TelegramBot(token, { polling: true });
+if (!token) {
+  console.error('❌ ОШИБКА: Переменная окружения BOT_TOKEN не установлена в Render!');
+} else {
+  try {
+    bot = new TelegramBot(token, { polling: true });
+    console.log('✅ Telegram Bot успешно запущен');
+  } catch (err) {
+    console.error('❌ Ошибка инициализации TelegramBot:', err.message);
+  }
+}
 
 // 3. Supabase и Admin ID
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -28,47 +37,59 @@ const MY_TELEGRAM_ID = '766669940';
 // 4. Раздача статических файлов из папки public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 5. КОМАНДА /start — Приветствие пользователей
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  const firstName = msg.from.first_name ? msg.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
+// Обработчики бота (регистрируем только если бот успешно создан)
+if (bot) {
+  // 5. КОМАНДА /start — Приветствие пользователей
+  bot.onText(/\/start/, async (msg) => {
+    const chatId = msg.chat.id;
+    const firstName = msg.from.first_name ? msg.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
 
-  const welcomeMessage = 
-    `✨ **Բարև, ${firstName}! Добро пожаловать в Erevan Connect!**\n\n` +
-    `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
-    `Находи компанию для кофе в Кентроне, +1 на футбол или партнеров для проектов в пару кликов!`;
+    const welcomeMessage = 
+      `✨ **Բարև, ${firstName}! Добро пожаловать в Erevan Connect!**\n\n` +
+      `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
+      `Находи компанию для кофе в Кентроне, +1 на футбол или партнеров для проектов в пару кликов!`;
 
-  const inlineKeyboard = {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '🚀 Открыть Erevan Connect', web_app: { url: process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com' } }
-        ],
-        [
-          { text: '📢 Наш Канал', url: 'https://t.me/erevan_connect' },
-          { text: '💬 Поддержка', url: 'https://t.me/erevan_connect_support' }
+    const inlineKeyboard = {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🚀 Открыть Erevan Connect', web_app: { url: process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com' } }
+          ],
+          [
+            { text: '📢 Наш Канал', url: 'https://t.me/erevan_connect' },
+            { text: '💬 Поддержка', url: 'https://t.me/erevan_connect_support' }
+          ]
         ]
-      ]
-    },
-    parse_mode: 'Markdown'
-  };
+      },
+      parse_mode: 'Markdown'
+    };
 
-  bot.sendMessage(chatId, welcomeMessage, inlineKeyboard);
-});
+    bot.sendMessage(chatId, welcomeMessage, inlineKeyboard);
+  });
 
-// 6. КОМАНДА /users — Административная аналитика
-bot.onText(/\/users/, async (msg) => {
-  const chatId = msg.chat.id;
+  // 6. КОМАНДА /users — Административная аналитика
+  bot.onText(/\/users/, async (msg) => {
+    const chatId = msg.chat.id;
 
-  if (msg.from.id.toString() !== MY_TELEGRAM_ID) {
-    return bot.sendMessage(chatId, '⛔️ *Доступ ограничен.* Эта команда только для администратора.', { parse_mode: 'Markdown' });
-  }
+    if (msg.from.id.toString() !== MY_TELEGRAM_ID) {
+      return bot.sendMessage(chatId, '⛔️ *Доступ ограничен.* Эта команда только для администратора.', { parse_mode: 'Markdown' });
+    }
 
-  await sendAdminReport(chatId);
-});
+    await sendAdminReport(chatId);
+  });
+
+  // 7. Обработка нажатий на инлайн-кнопки
+  bot.on('callback_query', async (query) => {
+    if (query.data === 'admin_refresh' && query.from.id.toString() === MY_TELEGRAM_ID) {
+      await sendAdminReport(query.message.chat.id, query.message.message_id);
+      bot.answerCallbackQuery(query.id, { text: 'Данные обновлены! 🚀' });
+    }
+  });
+}
 
 // Функция формирования и отправки админ-отчета
 async function sendAdminReport(chatId, messageId = null) {
+  if (!bot) return;
   try {
     const { data: users, error } = await supabase
       .from('users')
@@ -124,14 +145,6 @@ async function sendAdminReport(chatId, messageId = null) {
     bot.sendMessage(chatId, '⚠️ Ошибка при формировании отчета.');
   }
 }
-
-// 7. Обработка нажатий на инлайн-кнопки
-bot.on('callback_query', async (query) => {
-  if (query.data === 'admin_refresh' && query.from.id.toString() === MY_TELEGRAM_ID) {
-    await sendAdminReport(query.message.chat.id, query.message.message_id);
-    bot.answerCallbackQuery(query.id, { text: 'Данные обновлены! 🚀' });
-  }
-});
 
 // 8. Маршрут для отдачи приложения Mini App
 app.get('*', (req, res) => {
