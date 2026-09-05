@@ -43,7 +43,7 @@
 
   <div class="max-w-md mx-auto px-4 py-4 space-y-4">
 
-    <!-- 1. Header -->
+    <!-- Header -->
     <header class="flex justify-between items-center glass-card p-3.5 px-4 rounded-2xl shadow-xl">
       <div class="flex items-center space-x-3">
         <div class="relative">
@@ -52,7 +52,6 @@
               🇦🇲
             </div>
           </div>
-          <!-- Живая точка онлайна -->
           <span class="absolute -top-0.5 -right-0.5 flex h-3 w-3">
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-950"></span>
@@ -69,55 +68,107 @@
         </div>
       </div>
 
-      <!-- Кнопка перехода в Канал -->
       <a href="https://t.me/erevan_connect" target="_blank" class="flex items-center space-x-1.5 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-400 hover:bg-indigo-500/20 transition-all active:scale-95">
         <i class="fa-brands fa-telegram text-sm"></i>
         <span>Канал</span>
       </a>
     </header>
 
-    <!-- 2. Табы переключения (Лента / Создать) -->
-    <div class="flex glass-card p-1 rounded-xl text-xs font-semibold">
-      <button id="tab-feed" onclick="switchTab('feed')" class="flex-1 py-2.5 rounded-lg bg-indigo-600 text-white text-center transition-all shadow-md shadow-indigo-600/30">
-        🔥 Лента
-      </button>
-      <button id="tab-create" onclick="switchTab('create')" class="flex-1 py-2.5 rounded-lg text-slate-400 hover:text-white text-center transition-all">
-        ➕ Создать
+    <!-- ИНДИКАТОР ЗАГРУЗКИ -->
+    <div id="loading-screen" class="glass-card rounded-2xl p-8 text-center text-xs text-slate-400 space-y-3">
+      <i class="fa-solid fa-spinner fa-spin text-2xl text-indigo-400"></i>
+      <p>Загрузка данных профиля...</p>
+    </div>
+
+    <!-- ЭКРАН 1: ФОРМА РЕГИСТРАЦИИ ПРОФИЛЯ -->
+    <div id="screen-profile-form" class="hidden glass-card rounded-2xl p-5 space-y-4 border border-rose-500/30">
+      <div>
+        <h2 class="text-base font-bold text-white">Заполните анкета-профиль</h2>
+        <p class="text-xs text-slate-400 mt-0.5">Для доступа к встречам укажите ваши данные</p>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Имя *</label>
+          <input type="text" id="profile-name" placeholder="Ваше имя" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Возраст *</label>
+          <input type="number" id="profile-age" placeholder="Например: 25" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Ссылка на фото / Аватар (необязательно)</label>
+          <input type="url" id="profile-photo" placeholder="https://..." class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <button id="save-profile-btn" onclick="submitProfile()" class="w-full bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-indigo-600/20">
+          Отправить профиль на проверку
+        </button>
+      </div>
+    </div>
+
+    <!-- ЭКРАН 2: ПЛАШКА "ОЖИДАНИЕ МОДЕРАЦИИ ПРОФИЛЯ" -->
+    <div id="screen-profile-pending" class="hidden glass-card rounded-2xl p-6 text-center space-y-3 border border-amber-500/30">
+      <div class="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto text-xl border border-amber-500/20">
+        <i class="fa-solid fa-clock"></i>
+      </div>
+      <h3 class="text-sm font-bold text-white">Профиль на модерации</h3>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Администратор проверяет вашу анкету. Как только она будет одобрена, вам придет уведомление в боте, и откроется доступ к публикациям.
+      </p>
+      <button onclick="checkProfileStatus()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-xl text-xs font-semibold">
+        <i class="fa-solid fa-rotate-right mr-1"></i> Обновить статус
       </button>
     </div>
 
-    <!-- 3. Секция 1: ЛЕНТА СОБЫТИЙ -->
-    <div id="section-feed" class="space-y-3">
-      <!-- Контейнер для загрузки объявлений -->
-      <div id="events-list" class="space-y-3">
-        <div class="glass-card rounded-2xl p-4 text-center text-xs text-slate-400">
-          Загрузка объявлений...
+    <!-- ЭКРАН 3: ГЛАВНЫЙ ИНТЕРФЕЙС ПРИЛОЖЕНИЯ -->
+    <div id="screen-main-app" class="hidden space-y-4">
+      
+      <!-- Табы переключения -->
+      <div class="flex glass-card p-1 rounded-xl text-xs font-semibold">
+        <button id="tab-feed" onclick="switchTab('feed')" class="flex-1 py-2.5 rounded-lg bg-indigo-600 text-white text-center transition-all shadow-md shadow-indigo-600/30">
+          🔥 Лента
+        </button>
+        <button id="tab-create" onclick="switchTab('create')" class="flex-1 py-2.5 rounded-lg text-slate-400 hover:text-white text-center transition-all">
+          ➕ Создать
+        </button>
+      </div>
+
+      <!-- Секция Ленты -->
+      <div id="section-feed" class="space-y-3">
+        <div id="events-list" class="space-y-3">
+          <div class="glass-card rounded-2xl p-4 text-center text-xs text-slate-400">
+            Загрузка объявлений...
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 4. Секция 2: ФОРМА СОЗДАНИЯ -->
-    <div id="section-create" class="hidden glass-card rounded-2xl p-4 space-y-3 border border-indigo-500/20">
-      <h3 class="text-sm font-bold text-white mb-1">Создать новое объявление</h3>
-      
-      <div>
-        <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Заголовок *</label>
-        <input type="text" id="event-title" placeholder="Напр. Кофе в Кентроне" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
+      <!-- Секция Создания Объявления -->
+      <div id="section-create" class="hidden glass-card rounded-2xl p-4 space-y-3 border border-indigo-500/20">
+        <h3 class="text-sm font-bold text-white mb-1">Создать новое объявление</h3>
+        
+        <div>
+          <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Заголовок *</label>
+          <input type="text" id="event-title" placeholder="Напр. Кофе в Кентроне" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Описание</label>
+          <textarea id="event-desc" rows="3" placeholder="Расскажите подробности встречи..." class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+
+        <div>
+          <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Локация *</label>
+          <input type="text" id="event-location" placeholder="Напр. Каскад или Вернисаж" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <button id="submit-btn" onclick="submitEvent()" class="w-full bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-98">
+          Опубликовать событие
+        </button>
       </div>
 
-      <div>
-        <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Описание</label>
-        <textarea id="event-desc" rows="3" placeholder="Расскажите подробности встречи..." class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"></textarea>
-      </div>
-
-      <div>
-        <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Локация *</label>
-        <input type="text" id="event-location" placeholder="Напр. Каскад или Вернисаж" class="w-full bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
-
-      <button id="submit-btn" onclick="submitEvent()" class="w-full bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-98">
-        Опубликовать событие
-      </button>
     </div>
 
   </div>
@@ -127,6 +178,99 @@
     if (tg) {
       tg.ready();
       tg.expand();
+    }
+
+    // Извлечение текущего Telegram ID
+    function getTelegramUser() {
+      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+      return {
+        id: tgUser?.id || '766669940',
+        username: tgUser?.username || '',
+        first_name: tgUser?.first_name || 'Пользователь'
+      };
+    }
+
+    // Проверка статуса модерации профиля при запуске
+    async function checkProfileStatus() {
+      const user = getTelegramUser();
+      const loading = document.getElementById('loading-screen');
+      const formScreen = document.getElementById('screen-profile-form');
+      const pendingScreen = document.getElementById('screen-profile-pending');
+      const mainAppScreen = document.getElementById('screen-main-app');
+
+      loading.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/profile/status?user_id=${user.id}`);
+        const result = await res.json();
+
+        loading.classList.add('hidden');
+
+        if (result.success) {
+          if (result.status === 'approved') {
+            mainAppScreen.classList.remove('hidden');
+            formScreen.classList.add('hidden');
+            pendingScreen.classList.add('hidden');
+            loadEvents();
+          } else if (result.status === 'pending') {
+            pendingScreen.classList.remove('hidden');
+            formScreen.classList.add('hidden');
+            mainAppScreen.classList.add('hidden');
+          } else {
+            // 'not_found' или 'rejected'
+            formScreen.classList.remove('hidden');
+            pendingScreen.classList.add('hidden');
+            mainAppScreen.classList.add('hidden');
+            document.getElementById('profile-name').value = user.first_name;
+          }
+        }
+      } catch (err) {
+        loading.classList.add('hidden');
+        alert('Ошибка получения статуса профиля');
+      }
+    }
+
+    // Отправка данных профиля
+    async function submitProfile() {
+      const user = getTelegramUser();
+      const name = document.getElementById('profile-name').value.trim();
+      const age = document.getElementById('profile-age').value.trim();
+      const photo = document.getElementById('profile-photo').value.trim();
+      const btn = document.getElementById('save-profile-btn');
+
+      if (!name || !age) {
+        alert('⚠️ Пожалуйста, заполните Имя и Возраст.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Сохранение...';
+
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            username: user.username,
+            first_name: name,
+            age: parseInt(age),
+            photo_url: photo
+          })
+        });
+
+        const result = await res.json();
+        if (result.success) {
+          checkProfileStatus();
+        } else {
+          alert('⚠️ Ошибка: ' + result.error);
+        }
+      } catch (err) {
+        alert('❌ Ошибка сети: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Отправить профиль на проверку';
+      }
     }
 
     // Переключение табов
@@ -206,14 +350,11 @@
 
     // Отправка формы создания события
     async function submitEvent() {
+      const user = getTelegramUser();
       const title = document.getElementById('event-title').value.trim();
       const desc = document.getElementById('event-desc').value.trim();
       const location = document.getElementById('event-location').value.trim();
       const btn = document.getElementById('submit-btn');
-
-      // Безопасное получение user_id из Telegram WebApp
-      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-      const userId = tgUser?.id || '766669940'; // Запасной fallback ID
 
       if (!title || !location) {
         alert('⚠️ Пожалуйста, заполните Заголовок и Локацию.');
@@ -228,7 +369,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: userId,
+            user_id: user.id,
             title: title,
             description: desc,
             location: location,
@@ -255,8 +396,8 @@
       }
     }
 
-    // Первичная загрузка
-    loadEvents();
+    // Инициализация при старте
+    checkProfileStatus();
   </script>
 </body>
 </html>

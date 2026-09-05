@@ -3,7 +3,7 @@ const path = require('path');
 const { Telegraf } = require('telegraf');
 const { createClient } = require('@supabase/supabase-js');
 
-// Поддержка сериализации BigInt в JSON (защита от падения Express при BigInt ID)
+// Поддержка сериализации BigInt в JSON
 BigInt.prototype.toJSON = function() { return this.toString(); };
 
 // 1. Инициализация Express
@@ -20,8 +20,75 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 const MY_TELEGRAM_ID = '766669940';
 
-// 3. Раздача статических файлов из public/
+// 3. Раздача статических файлов
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ==========================================
+// API ЭНДПОИНТЫ ДЛЯ МOДЕРАЦИИ ПРОФИЛЯ
+// ==========================================
+
+// Получение статуса профиля пользователя
+app.get('/api/profile/status', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    if (!user_id) return res.status(400).json({ success: false, error: 'User ID обязателен' });
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('profile_status, first_name, age, photo_url')
+      .eq('telegram_id', BigInt(user_id))
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    if (!user) return res.json({ success: true, status: 'not_found' });
+
+    res.json({ success: true, status: user.profile_status || 'pending', user });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Отправка анкета/профиля на модерацию
+app.post('/api/profile', async (req, res) => {
+  try {
+    const { user_id, username, first_name, age, photo_url } = req.body;
+
+    if (!user_id || !first_name || !age) {
+      return res.status(400).json({ success: false, error: 'Заполните обязательные поля профиля' });
+    }
+
+    const userIdBigInt = BigInt(user_id);
+
+    // Upsert данных пользователя со статусом 'pending'
+    const { data: user, error } = await supabase
+      .from('users')
+      .upsert({
+        telegram_id: userIdBigInt,
+        username: username || '',
+        first_name: first_name.trim(),
+        age: parseInt(age),
+        photo_url: photo_url || '',
+        profile_status: 'pending'
+      }, { onConflict: 'telegram_id' })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+
+    // Уведомляем администратора о новой заявке на модерацию профиля
+    if (bot) {
+      try {
+        await notifyAdminForProfileModeration(user);
+      } catch (modErr) {
+        console.error('Ошибка отправки профиля на модерацию:', modErr);
+      }
+    }
+
+    res.json({ success: true, message: 'Профиль отправлен на модерацию', user });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ==========================================
 // API ЭНДПОИНТЫ ДЛЯ MINI APP
@@ -38,7 +105,7 @@ app.get('/api/categories', async (req, res) => {
   }
 });
 
-// Получение только ОДОБРЕННЫХ событий для ленты
+// Получение только ОДОБРЕННЫХ событий
 app.get('/api/events', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -54,7 +121,7 @@ app.get('/api/events', async (req, res) => {
   }
 });
 
-// Создание нового объявления из Mini App (отправка на модерацию)
+// Создание нового объявления (с проверкой модерации профиля)
 app.post('/api/events', async (req, res) => {
   try {
     const { user_id, category_id, title, description, location, event_date, max_people } = req.body;
@@ -65,19 +132,15 @@ app.post('/api/events', async (req, res) => {
 
     const userIdBigInt = BigInt(user_id);
 
-    // Гарантируем, что пользователь существует в базе с актуальным именем/username
-    const { data: existingUser } = await supabase
+    // Проверяем, одобрен ли профиль пользователя
+    const { data: user } = await supabase
       .from('users')
-      .select('username, first_name')
+      .select('profile_status')
       .eq('telegram_id', userIdBigInt)
       .single();
 
-    if (!existingUser) {
-      await supabase.from('users').upsert({
-        telegram_id: userIdBigInt,
-        first_name: '',
-        username: ''
-      }, { onConflict: 'telegram_id' });
+    if (!user || user.profile_status !== 'approved') {
+      return res.status(403).json({ success: false, error: 'Ваш профиль еще не прошел модерацию.' });
     }
 
     const validDate = event_date ? new Date(event_date).toISOString() : new Date().toISOString();
@@ -89,7 +152,7 @@ app.post('/api/events', async (req, res) => {
       location: location.trim(),
       event_date: validDate,
       max_people: parseInt(max_people) || 2,
-      status: 'pending' // Статус ожидания модерации
+      status: 'pending'
     };
 
     if (category_id) {
@@ -107,12 +170,11 @@ app.post('/api/events', async (req, res) => {
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    // Уведомляем администратора о новом объявлении
     if (bot) {
       try {
         await notifyAdminForModeration(data);
       } catch (modErr) {
-        console.error('Ошибка отправки на модерацию:', modErr);
+        console.error('Ошибка отправки объявления на модерацию:', modErr);
       }
     }
 
@@ -132,13 +194,11 @@ let bot = null;
 if (token) {
   bot = new Telegraf(token);
 
-  // Команда /start (поддерживает обычный запуск и переход к чату по объявлению)
   bot.command('start', async (ctx) => {
     const user = ctx.from;
     const displayName = user.username ? `@${user.username}` : (user.first_name || 'Друг');
     const startParam = ctx.message.text.split(' ')[1];
 
-    // 1. Авто-регистрация / обновление пользователя
     try {
       await supabase.from('users').upsert({
         telegram_id: BigInt(user.id),
@@ -147,10 +207,9 @@ if (token) {
         language_code: user.language_code || 'ru'
       }, { onConflict: 'telegram_id' });
     } catch (dbErr) {
-      console.error('Ошибка авто-регистрации пользователя в Supabase:', dbErr);
+      console.error('Ошибка авто-регистрации пользователя:', dbErr);
     }
 
-    // 2. Если переход по ссылке «Написать автору»: /start chat_EVENTID
     if (startParam && startParam.startsWith('chat_')) {
       const eventId = startParam.replace('chat_', '');
       const { data: event } = await supabase.from('events').select('*, users(first_name, username)').eq('id', eventId).single();
@@ -171,7 +230,6 @@ if (token) {
       );
     }
 
-    // Стандартное приветствие
     const welcomeMessage = 
       `✨ *Привет, ${displayName}! Добро пожаловать в Erevan Connect!*\n\n` +
       `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
@@ -192,24 +250,47 @@ if (token) {
     });
   });
 
-  // Команда /users (Админ)
-  bot.command('users', async (ctx) => {
-    if (ctx.from.id.toString() !== MY_TELEGRAM_ID) {
-      return ctx.reply('⛔️ Доступ ограничен. Эта команда только для администратора.');
-    }
-    await sendAdminReport(ctx);
-  });
-
-  // Обработка кнопки обновления
-  bot.action('admin_refresh', async (ctx) => {
+  // МОДЕРАЦИЯ ПРОФИЛЯ: Одобрить
+  bot.action(/^approve_profile_(\d+)$/, async (ctx) => {
     if (ctx.from.id.toString() !== MY_TELEGRAM_ID) return;
-    await sendAdminReport(ctx, true);
-    try {
-      await ctx.answerCbQuery('Данные обновлены! 🚀');
-    } catch (e) {}
+    const userId = ctx.match[1];
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .update({ profile_status: 'approved' })
+      .eq('telegram_id', BigInt(userId))
+      .select()
+      .single();
+
+    if (!error && user) {
+      await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✅ *ПРОФИЛЬ ОДОБРЕН*`, { parse_mode: 'Markdown' });
+      try {
+        await bot.telegram.sendMessage(userId, `🎉 Ваш профиль успешно прошел модерацию! Теперь вы можете публиковать события.`);
+      } catch (e) {}
+    }
   });
 
-  // МОДЕРАЦИЯ: Обработка кнопки "Одобрить"
+  // МОДЕРАЦИЯ ПРОФИЛЯ: Отклонить
+  bot.action(/^reject_profile_(\d+)$/, async (ctx) => {
+    if (ctx.from.id.toString() !== MY_TELEGRAM_ID) return;
+    const userId = ctx.match[1];
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .update({ profile_status: 'rejected' })
+      .eq('telegram_id', BigInt(userId))
+      .select()
+      .single();
+
+    if (!error && user) {
+      await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n❌ *ПРОФИЛЬ ОТКЛОНЕН*`, { parse_mode: 'Markdown' });
+      try {
+        await bot.telegram.sendMessage(userId, `😔 К сожалению, ваш профиль не прошел модерацию. Попробуйте заполнить анкету повторно.`);
+      } catch (e) {}
+    }
+  });
+
+  // МОДЕРАЦИЯ ОБЪЯВЛЕНИЯ: Одобрить
   bot.action(/^approve_(\d+)$/, async (ctx) => {
     if (ctx.from.id.toString() !== MY_TELEGRAM_ID) return;
     const eventId = ctx.match[1];
@@ -229,7 +310,7 @@ if (token) {
     }
   });
 
-  // МОДЕРАЦИЯ: Обработка кнопки "Отклонить"
+  // МОДЕРАЦИЯ ОБЪЯВЛЕНИЯ: Отклонить
   bot.action(/^reject_(\d+)$/, async (ctx) => {
     if (ctx.from.id.toString() !== MY_TELEGRAM_ID) return;
     const eventId = ctx.match[1];
@@ -249,19 +330,17 @@ if (token) {
     }
   });
 
-  // АНОНИМНЫЕ СООБЩЕНИЯ: Пересылка сообщений между пользователями
+  // АНОНИМНЫЕ СООБЩЕНИЯ
   bot.on('message', async (ctx) => {
     const replyTo = ctx.message.reply_to_message;
     if (!replyTo || !replyTo.text) return;
 
-    // Проверяем, если пользователь отвечает на сообщение о связях
     const match = replyTo.text.match(/Событие: (.+)/);
     if (match) {
       const eventTitle = match[1].trim();
       const { data: event } = await supabase.from('events').select('*').eq('title', eventTitle).order('created_at', { ascending: false }).limit(1).single();
 
       if (event) {
-        // Сохраняем сообщение в базу
         await supabase.from('messages').insert([{
           event_id: event.id,
           sender_id: BigInt(ctx.from.id),
@@ -273,7 +352,6 @@ if (token) {
           ? `@${ctx.from.username}` 
           : (ctx.from.first_name || 'Без username');
 
-        // Отправляем сообщение автору объявления
         try {
           await bot.telegram.sendMessage(
             event.user_id.toString(),
@@ -290,15 +368,36 @@ if (token) {
     }
   });
 
-  // Запуск бота
-  bot.launch().then(() => console.log('✅ Telegram Bot успешно запущен (Telegraf)')).catch(err => {
+  bot.launch().then(() => console.log('✅ Telegram Bot запущен')).catch(err => {
     console.error('❌ Ошибка запуска бота:', err.message);
   });
-} else {
-  console.error('❌ BOT_TOKEN не задан в переменных окружения.');
 }
 
-// Функция отправки уведомления администратору на модерацию
+// Уведомление администратора о профиле
+async function notifyAdminForProfileModeration(user) {
+  const authorInfo = user.username ? `@${user.username}` : `ID: \`${user.telegram_id}\``;
+  const message = 
+    `👤 *Новый профиль на модерацию!*\n` +
+    `═══════════════════\n` +
+    `📛 *Имя:* ${user.first_name}\n` +
+    `🎂 *Возраст:* ${user.age}\n` +
+    `📱 *Аккаунт:* ${authorInfo}\n` +
+    `🖼 *Фото:* ${user.photo_url || 'Не указано'}`;
+
+  await bot.telegram.sendMessage(MY_TELEGRAM_ID, message, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '✅ Одобрить профиль', callback_data: `approve_profile_${user.telegram_id}` },
+          { text: '❌ Отклонить', callback_data: `reject_profile_${user.telegram_id}` }
+        ]
+      ]
+    }
+  });
+}
+
+// Уведомление администратора об объявлении
 async function notifyAdminForModeration(event) {
   const authorInfo = event.users?.username 
     ? `@${event.users.username}` 
@@ -326,92 +425,12 @@ async function notifyAdminForModeration(event) {
   });
 }
 
-// Функция формирования админ-отчета
-async function sendAdminReport(ctx, isEdit = false) {
-  try {
-    const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (usersError) throw usersError;
-
-    let eventsCount = 0;
-    try {
-      const { count, error: eventsError } = await supabase
-        .from('events')
-        .select('*', { count: 'exact', head: true });
-      if (!eventsError) eventsCount = count || 0;
-    } catch (e) {}
-
-    const totalUsers = users ? users.length : 0;
-    const usersWithUsername = users ? users.filter(u => u.username).length : 0;
-    const now = new Date();
-    const last24h = users ? users.filter(u => u.created_at && (now - new Date(u.created_at)) < (24 * 60 * 60 * 1000)).length : 0;
-
-    let message = `📊 *Erevan Connect | Dashboard*\n`;
-    message += `═══════════════════\n`;
-    message += `👥 *Всего участников:* \`${totalUsers}\`\n`;
-    message += `🔥 *Прирост за 24ч:* \`+${last24h}\`\n`;
-    message += `🎉 *Всего событий:* \`${eventsCount}\`\n`;
-    message += `💬 *С юзернеймом:* \`${usersWithUsername}/${totalUsers}\`\n`;
-    message += `═══════════════════\n\n`;
-    message += `📋 *Свежие регистрации:*\n\n`;
-
-    const recentUsers = users ? users.slice(0, 10) : [];
-    if (recentUsers.length === 0) {
-      message += `_Пока нет зарегистрированных пользователей_\n`;
-    } else {
-      recentUsers.forEach((u, index) => {
-        const name = u.first_name ? u.first_name.replace(/[*_`\[\]]/g, '') : 'Без имени';
-        const username = u.username ? `@${u.username.replace(/[*_`\[\]]/g, '')}` : '❌ *нет юзернейма*';
-        const date = u.created_at ? new Date(u.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '--.--';
-        message += `${index + 1}. *${name}* | ${username} \`[${date}]\`\n`;
-      });
-    }
-
-    const webAppUrl = process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com';
-    const extra = {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔄 Обновить данные', callback_data: 'admin_refresh' }],
-          [{ text: '🌐 Открыть Mini App', web_app: { url: webAppUrl } }]
-        ]
-      }
-    };
-
-    if (isEdit) {
-      try {
-        await ctx.editMessageText(message, extra);
-      } catch (editErr) {
-        if (editErr.description && editErr.description.includes('message is not modified')) {
-          return;
-        }
-        throw editErr;
-      }
-    } else {
-      await ctx.reply(message, extra);
-    }
-  } catch (err) {
-    console.error('Ошибка админ-отчета (детали):', err);
-    const details = err.message || JSON.stringify(err);
-    const errorMsg = `⚠️ *Ошибка при формировании отчета.*\n\n*Детали:* \`${details}\``;
-    
-    if (isEdit) {
-      try { await ctx.editMessageText(errorMsg, { parse_mode: 'Markdown' }); } catch (e) {}
-    } else {
-      await ctx.reply(errorMsg, { parse_mode: 'Markdown' });
-    }
-  }
-}
-
-// 5. Маршрут для отдачи Mini App
+// Маршрут для раздачи Mini App
 app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 6. Запуск сервера Express
+// Запуск сервера
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
