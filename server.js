@@ -7,14 +7,14 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 app.use(express.json());
 
-// 2. Инициализация Supabase с фоллбэком (не роняет сервер, если нет ключа)
+// 2. Инициализация Supabase
 const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseKey = process.env.SUPABASE_KEY || 'placeholder-key';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MY_TELEGRAM_ID = '766669940';
 
-// 3. Раздача статических файлов out of public/
+// 3. Раздача статических файлов из public/
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 4. Инициализация Telegraf
@@ -25,8 +25,22 @@ if (token) {
   bot = new Telegraf(token);
 
   // Команда /start
-  bot.command('start', (ctx) => {
-    const firstName = ctx.from.first_name ? ctx.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
+  bot.command('start', async (ctx) => {
+    const user = ctx.from;
+    const firstName = user.first_name ? user.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
+
+    // Запись / обновление пользователя в Supabase под вашу SQL-схему
+    try {
+      await supabase.from('users').upsert({
+        telegram_id: user.id,
+        first_name: user.first_name || '',
+        username: user.username || '',
+        language_code: user.language_code || 'ru'
+      }, { onConflict: 'telegram_id' });
+    } catch (dbErr) {
+      console.error('Ошибка авто-регистрации пользователя в Supabase:', dbErr);
+    }
+
     const welcomeMessage = 
       `✨ *Привет, ${firstName}! Добро пожаловать в Erevan Connect!*\n\n` +
       `Твой главный проводник по встречам, спорту и событиям в Ереване 🇦🇲\n\n` +
@@ -73,12 +87,18 @@ if (token) {
 // Функция формирования админ-отчета
 async function sendAdminReport(ctx, isEdit = false) {
   try {
-    const { data: users, error } = await supabase
+    // Получаем пользователей
+    const { data: users, error: usersError } = await supabase
       .from('users')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (usersError) throw usersError;
+
+    // Считаем события из вашей таблицы events
+    const { count: eventsCount } = await supabase
+      .from('events')
+      .select('*', { count: 'exact', head: true });
 
     const totalUsers = users ? users.length : 0;
     const usersWithUsername = users ? users.filter(u => u.username).length : 0;
@@ -89,6 +109,7 @@ async function sendAdminReport(ctx, isEdit = false) {
     message += `═══════════════════\n`;
     message += `👥 *Всего участников:* \`${totalUsers}\`\n`;
     message += `🔥 *Прирост за 24ч:* \`+${last24h}\`\n`;
+    message += `🎉 *Создано событий:* \`${eventsCount || 0}\`\n`;
     message += `💬 *С юзернеймом:* \`${usersWithUsername}/${totalUsers}\`\n`;
     message += `═══════════════════\n\n`;
     message += `📋 *Свежие регистрации:*\n\n`;
