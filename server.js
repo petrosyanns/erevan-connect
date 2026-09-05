@@ -91,7 +91,7 @@ app.post('/api/events', async (req, res) => {
     const { data, error } = await supabase
       .from('events')
       .insert([insertPayload])
-      .select()
+      .select('*, users(first_name, username)')
       .single();
 
     if (error) {
@@ -145,17 +145,20 @@ if (token) {
     // 2. Если переход по ссылке «Написать автору»: /start chat_EVENTID
     if (startParam && startParam.startsWith('chat_')) {
       const eventId = startParam.replace('chat_', '');
-      const { data: event } = await supabase.from('events').select('*').eq('id', eventId).single();
+      const { data: event } = await supabase.from('events').select('*, users(first_name, username)').eq('id', eventId).single();
 
       if (!event) return ctx.reply('⚠️ Объявление не найдено или было удалено.');
       if (event.user_id.toString() === user.id.toString()) {
         return ctx.reply('ℹ️ Вы являетесь автором этого объявления.');
       }
 
+      const authorName = event.users?.username ? `@${event.users.username}` : (event.users?.first_name || 'автору');
+
       return ctx.reply(
-        `💬 *Связь с автором объявления: "${event.title}"*\n\n` +
-        `Отправьте ваше сообщение прямо сюда. Бот передаст его автору анонимно.\n\n` +
-        `_ID события: #${event.id}_`,
+        `💬 *Связь с автором объявления: "${event.title}"*\n` +
+        `👤 Автор: ${authorName}\n\n` +
+        `Отправьте ваше сообщение прямо сюда. Бот передаст его автору.\n\n` +
+        `_Событие: ${event.title}_`,
         { parse_mode: 'Markdown', reply_markup: { force_reply: true } }
       );
     }
@@ -244,10 +247,10 @@ if (token) {
     if (!replyTo || !replyTo.text) return;
 
     // Проверяем, если пользователь отвечает на сообщение о связях
-    const match = replyTo.text.match(/ID события: #(\d+)/);
+    const match = replyTo.text.match(/Событие: (.+)/);
     if (match) {
-      const eventId = match[1];
-      const { data: event } = await supabase.from('events').select('*').eq('id', eventId).single();
+      const eventTitle = match[1].trim();
+      const { data: event } = await supabase.from('events').select('*').eq('title', eventTitle).order('created_at', { ascending: false }).limit(1).single();
 
       if (event) {
         // Сохраняем сообщение в базу
@@ -258,13 +261,15 @@ if (token) {
           text: ctx.message.text
         }]);
 
+        const senderUsername = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || 'Пользователь');
+
         // Отправляем сообщение автору объявления
         try {
           await bot.telegram.sendMessage(
             event.user_id.toString(),
             `📩 *Новый отклик на ваше объявление "${event.title}":*\n\n` +
             `"${ctx.message.text}"\n\n` +
-            `_Чтобы ответить, используйте юзернейм: @${ctx.from.username || 'скрыт'}_`,
+            `👤 *Отправитель:* ${senderUsername}`,
             { parse_mode: 'Markdown' }
           );
           await ctx.reply('✅ Ваше сообщение успешно отправлено автору!');
@@ -285,14 +290,18 @@ if (token) {
 
 // Функция отправки уведомления администратору на модерацию
 async function notifyAdminForModeration(event) {
+  const authorInfo = event.users?.username 
+    ? `@${event.users.username}` 
+    : (event.users?.first_name || `ID: \`${event.user_id}\``);
+
   const message = 
-    `🆕 *Новое объявление на модерацию! (ID: ${event.id})*\n` +
+    `🆕 *Новое объявление на модерацию!*\n` +
     `═══════════════════\n` +
     `📌 *Заголовок:* ${event.title}\n` +
     `📝 *Описание:* ${event.description || 'Без описания'}\n` +
     `📍 *Локация:* ${event.location}\n` +
     `📅 *Дата:* ${new Date(event.event_date).toLocaleString('ru-RU')}\n` +
-    `👤 *Автор ID:* \`${event.user_id}\``;
+    `👤 *Автор:* ${authorInfo}`;
 
   await bot.telegram.sendMessage(MY_TELEGRAM_ID, message, {
     parse_mode: 'Markdown',
