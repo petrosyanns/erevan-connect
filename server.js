@@ -7,10 +7,14 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 app.use(express.json());
 
-// 2. Инициализация Supabase
+// 2. Инициализация Supabase (с поддержкой разных названий ключей)
 const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseKey = process.env.SUPABASE_KEY || 'placeholder-key';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || 'placeholder-key';
+
+// Указываем схему public явно при создании клиента
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  db: { schema: 'public' }
+});
 
 const MY_TELEGRAM_ID = '766669940';
 
@@ -91,13 +95,32 @@ if (token) {
 // Функция формирования админ-отчета
 async function sendAdminReport(ctx, isEdit = false) {
   try {
-    // 1. Получаем пользователей из вашей таблицы
+    // 1. Получаем пользователей из таблицы users
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (usersError) throw usersError;
+    // Если есть ошибка доступа к users — выдаем расширенную диагностику
+    if (usersError) {
+      let debugMsg = `⚠️ *Ошибка доступа к таблице users:*\n\`${usersError.message}\`\n\n`;
+      debugMsg += `🌐 *Используемый URL:* \`${supabaseUrl}\`\n\n`;
+      debugMsg += `🔍 *Проверка альтернативных таблиц:*\n`;
+
+      // Проверяем таблицу events
+      const { error: eventsTestErr } = await supabase.from('events').select('id').limit(1);
+      debugMsg += `• Таблица \`events\`: ${eventsTestErr ? '❌ ' + eventsTestErr.message : '✅ Доступна'}\n`;
+
+      // Проверяем таблицу categories
+      const { error: catTestErr } = await supabase.from('categories').select('id').limit(1);
+      debugMsg += `• Таблица \`categories\`: ${catTestErr ? '❌ ' + catTestErr.message : '✅ Доступна'}\n`;
+
+      if (isEdit) {
+        return await ctx.editMessageText(debugMsg, { parse_mode: 'Markdown' });
+      } else {
+        return await ctx.reply(debugMsg, { parse_mode: 'Markdown' });
+      }
+    }
 
     // 2. Запрос количества активных событий
     let eventsCount = 0;
