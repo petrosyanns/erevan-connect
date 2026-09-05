@@ -1,31 +1,34 @@
 const express = require('express');
 const path = require('path');
-const TelegramBotApi = require('node-telegram-bot-api');
+const TelegramBotModule = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
 
-// Гарантированное извлечение конструктора для Node v24
-const TelegramBot = typeof TelegramBotApi === 'function' 
-  ? TelegramBotApi 
-  : (TelegramBotApi.TelegramBot || TelegramBotApi.default);
+// Безопасное извлечение конструктора для Node.js v24+
+const TelegramBot = TelegramBotModule.default || TelegramBotModule.TelegramBot || TelegramBotModule;
 
 // 1. Инициализация Express
 const app = express();
 app.use(express.json());
 
-// 2. Настройка переменных и бота
+// 2. Настройка бота
 const token = process.env.BOT_TOKEN;
+if (!token) {
+  console.error('⚠️ BOT_TOKEN не найден в переменной окружения!');
+}
+
 const bot = new TelegramBot(token, { polling: true });
 
-// 3. Supabase и твой ID
+// 3. Supabase и Admin ID
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MY_TELEGRAM_ID = '766669940';
-// 3. Раздача статических файлов из папки public
+
+// 4. Раздача статических файлов из папки public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 4. КОМАНДА /start — Приветствие пользователей
+// 5. КОМАНДА /start — Приветствие пользователей
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const firstName = msg.from.first_name ? msg.from.first_name.replace(/[*_`\[\]]/g, '') : 'друг';
@@ -53,11 +56,10 @@ bot.onText(/\/start/, async (msg) => {
   bot.sendMessage(chatId, welcomeMessage, inlineKeyboard);
 });
 
-// 5. КОМАНДА /users — Административная аналитика
+// 6. КОМАНДА /users — Административная аналитика
 bot.onText(/\/users/, async (msg) => {
   const chatId = msg.chat.id;
 
-  // Проверка прав доступа по твоему ID
   if (msg.from.id.toString() !== MY_TELEGRAM_ID) {
     return bot.sendMessage(chatId, '⛔️ *Доступ ограничен.* Эта команда только для администратора.', { parse_mode: 'Markdown' });
   }
@@ -75,10 +77,10 @@ async function sendAdminReport(chatId, messageId = null) {
 
     if (error) throw error;
 
-    const totalUsers = users.length;
-    const usersWithUsername = users.filter(u => u.username).length;
+    const totalUsers = users ? users.length : 0;
+    const usersWithUsername = users ? users.filter(u => u.username).length : 0;
     const now = new Date();
-    const last24h = users.filter(u => (now - new Date(u.created_at)) < (24 * 60 * 60 * 1000)).length;
+    const last24h = users ? users.filter(u => (now - new Date(u.created_at)) < (24 * 60 * 60 * 1000)).length : 0;
 
     let message = `📊 **Erevan Connect | Dashboard**\n`;
     message += `═══════════════════\n`;
@@ -88,7 +90,7 @@ async function sendAdminReport(chatId, messageId = null) {
     message += `═══════════════════\n\n`;
     message += `📋 **Свежие регистрации:**\n\n`;
 
-    const recentUsers = users.slice(0, 10);
+    const recentUsers = users ? users.slice(0, 10) : [];
     recentUsers.forEach((u, index) => {
       const name = u.first_name ? u.first_name.replace(/[*_`\[\]]/g, '') : 'Без имени';
       const username = u.username ? `@${u.username}` : '❌ *нет юзернейма*';
@@ -123,7 +125,7 @@ async function sendAdminReport(chatId, messageId = null) {
   }
 }
 
-// 6. Обработка нажатий на инлайн-кнопки
+// 7. Обработка нажатий на инлайн-кнопки
 bot.on('callback_query', async (query) => {
   if (query.data === 'admin_refresh' && query.from.id.toString() === MY_TELEGRAM_ID) {
     await sendAdminReport(query.message.chat.id, query.message.message_id);
@@ -131,12 +133,12 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// 7. Маршрут для отдачи приложения Mini App
+// 8. Маршрут для отдачи приложения Mini App
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 8. Запуск сервера
+// 9. Запуск сервера
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
