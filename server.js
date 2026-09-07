@@ -18,6 +18,12 @@ const ADMIN_ID = process.env.ADMIN_ID;
 const bot = new Telegraf(BOT_TOKEN);
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Вспомогательная функция для безопасности Markdown
+function escapeMarkdown(text) {
+  if (!text) return '';
+  return String(text).replace(/[_*`\[\]]/g, '\\$&');
+}
+
 // ==========================================
 // 1. КОМАНДЫ TELEGRAM БОТА
 // ==========================================
@@ -31,8 +37,17 @@ bot.start((ctx) => {
   );
 });
 
+// Команда /users с проверкой прав админа и датой регистрации
 bot.command('users', async (ctx) => {
+  const userId = ctx.from.id;
+
+  // 1. Проверка прав (только для ADMIN_ID)
+  if (ADMIN_ID && String(userId) !== String(ADMIN_ID)) {
+    return ctx.reply('❌ У вас нет доступа к этой команде.');
+  }
+
   try {
+    // 2. Запрос пользователей из Supabase
     const { data, error } = await supabase
       .from('users')
       .select('*')
@@ -41,14 +56,35 @@ bot.command('users', async (ctx) => {
     if (error) throw error;
     if (!data || data.length === 0) return ctx.reply('👥 Список пользователей пуст.');
 
+    // 3. Форматирование текста
     let message = `👥 *Всего пользователей:* ${data.length}\n\n`;
+
     data.forEach((u, index) => {
-      const username = u.username ? `@${u.username}` : 'нет username';
+      const username = u.username ? `@${escapeMarkdown(u.username)}` : 'нет username';
+      const firstName = escapeMarkdown(u.first_name || 'Без имени');
       const vip = u.is_vip ? ' ⭐ VIP' : '';
-      message += `${index + 1}. *${u.first_name || 'Без имени'}* (${username})${vip} — \`${u.telegram_id}\`\n`;
+
+      // Форматирование даты
+      let dateStr = 'Дата неизвестна';
+      if (u.created_at) {
+        dateStr = new Date(u.created_at).toLocaleString('ru-RU', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+
+      message += `${index + 1}. *${firstName}* (${username})${vip}\n`;
+      message += `   🆔 \`${u.telegram_id}\` | 📅 ${dateStr}\n\n`;
     });
 
-    if (message.length > 4000) message = message.substring(0, 4000) + '\n\n...список обрезан.';
+    // Ограничение длины сообщения Telegram (4096 символов)
+    if (message.length > 4000) {
+      message = message.substring(0, 4000) + '\n\n...список обрезан из-за лимита длины.';
+    }
+
     ctx.replyWithMarkdown(message);
   } catch (err) {
     console.error('Ошибка /users в боте:', err);
@@ -105,7 +141,7 @@ app.get('/api/events', async (req, res) => {
     const { data, error } = await supabase
       .from('events')
       .select('*, categories(id, name_ru, name_en, name_am, icon), users(telegram_id, first_name, username, is_vip)')
-      .eq('status', 'approved') // 👈 ФИЛЬТР: Возвращаем только одобренные посты
+      .eq('status', 'approved')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -143,7 +179,7 @@ app.post('/api/events', async (req, res) => {
         location,
         event_date,
         max_people: parseInt(max_people) || 2,
-        status: 'pending' // 👈 ИЗМЕНЕНО: Отправляется на модерацию!
+        status: 'pending'
       })
       .select()
       .single();
@@ -155,9 +191,9 @@ app.post('/api/events', async (req, res) => {
       try {
         const textMessage = 
           `📌 *Новое объявление на модерацию!* (#${event.id})\n\n` +
-          `📝 *Заголовок:* ${title}\n` +
-          `📖 *Описание:* ${description || 'Нет'}\n` +
-          `📍 *Локация:* ${location}\n` +
+          `📝 *Заголовок:* ${escapeMarkdown(title)}\n` +
+          `📖 *Описание:* ${escapeMarkdown(description || 'Нет')}\n` +
+          `📍 *Локация:* ${escapeMarkdown(location)}\n` +
           `📅 *Дата:* ${event_date}\n` +
           `👥 *Мест:* ${max_people}\n` +
           `👤 *Автор ID:* \`${user_id}\``;
@@ -212,7 +248,7 @@ bot.on('callback_query', async (ctx) => {
       // Отправляем сообщение автору
       if (event?.user_id) {
         try {
-          await bot.telegram.sendMessage(event.user_id, `🎉 Ваше объявление *«${event.title}»* было успешно одобрено и опубликовано!`, { parse_mode: 'Markdown' });
+          await bot.telegram.sendMessage(event.user_id, `🎉 Ваше объявление *«${escapeMarkdown(event.title)}»* было успешно одобрено и опубликовано!`, { parse_mode: 'Markdown' });
         } catch (e) {
           console.error('Не удалось отправить уведомление пользователю:', e.message);
         }
@@ -234,7 +270,7 @@ bot.on('callback_query', async (ctx) => {
       // Отправляем сообщение автору
       if (event?.user_id) {
         try {
-          await bot.telegram.sendMessage(event.user_id, `😔 Ваше объявление *«${event.title}»* было отклонено модератором.`, { parse_mode: 'Markdown' });
+          await bot.telegram.sendMessage(event.user_id, `😔 Ваше объявление *«${escapeMarkdown(event.title)}»* было отклонено модератором.`, { parse_mode: 'Markdown' });
         } catch (e) {
           console.error('Не удалось отправить уведомление пользователю:', e.message);
         }
