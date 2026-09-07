@@ -80,7 +80,7 @@
     </div>
   </main>
 
-  <!-- Модальное окно создания с исправленной версткой для мобилок -->
+  <!-- Модальное окно создания -->
   <div id="modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden fade-in">
     <div class="glass w-full max-w-md rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-700/50 pb-3">
@@ -119,7 +119,7 @@
           </div>
         </div>
 
-        <!-- Удобные раздельные блоки для телефона: Дата отдельно, Мест отдельно -->
+        <!-- Раздельные блоки: Дата и Места -->
         <div class="space-y-3 pt-1">
           <div>
             <label id="lbl-date" class="block text-[11px] font-medium text-indigo-300 mb-1">Дата и время *</label>
@@ -132,7 +132,7 @@
         </div>
       </div>
 
-      <button id="btn-submit-event" onclick="submitEvent()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-3 rounded-xl shadow-lg shadow-indigo-600/30 active:scale-98 transition">
+      <button id="btn-submit-event" type="button" onclick="submitEvent()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-3 rounded-xl shadow-lg shadow-indigo-600/30 active:scale-98 transition">
         Опубликовать
       </button>
     </div>
