@@ -15,10 +15,55 @@ const bot = new Telegraf(BOT_TOKEN);
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ==========================================
-// 1. ПОЛЬЗОВАТЕЛИ (/users И /api/users)
+// 1. КОМАНДЫ TELEGRAM БОТА
 // ==========================================
 
-// Функция получения пользователей
+// Обработка команды /start
+bot.start((ctx) => {
+  ctx.reply(
+    `Привет, ${ctx.from.first_name}! 👋\nНажми кнопку ниже, чтобы открыть приложение досуга:`,
+    Markup.inlineKeyboard([
+      [Markup.button.webApp('Открыть приложение', process.env.WEBAPP_URL || 'https://google.com')]
+    ])
+  );
+});
+
+// Обработка команды /users прямо в чате Telegram
+bot.command('users', async (ctx) => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      return ctx.reply('👥 Список пользователей пуст.');
+    }
+
+    let message = `👥 *Всего пользователей:* ${data.length}\n\n`;
+    data.forEach((u, index) => {
+      const username = u.username ? `@${u.username}` : 'нет username';
+      message += `${index + 1}. *${u.first_name || 'Без имени'}* (${username}) — \`${u.telegram_id}\`\n`;
+    });
+
+    // Если сообщение слишком длинное (лимит Telegram 4096 символов)
+    if (message.length > 4000) {
+      message = message.substring(0, 4000) + '\n\n...список обрезан.';
+    }
+
+    ctx.replyWithMarkdown(message);
+  } catch (err) {
+    console.error('Ошибка /users в боте:', err);
+    ctx.reply(`❌ Ошибка получения пользователей: ${err.message}`);
+  }
+});
+
+// ==========================================
+// 2. HTTP ЭНДПОИНТЫ ДЛЯ WEB APP И БРАУЗЕРА
+// ==========================================
+
 async function getUsersHandler(req, res) {
   try {
     const { data, error } = await supabase
@@ -33,11 +78,10 @@ async function getUsersHandler(req, res) {
   }
 }
 
-// Доступ по обоим маршрутам
 app.get('/users', getUsersHandler);
 app.get('/api/users', getUsersHandler);
 
-// Авторизация / Сохранение профиля
+// Сохранение профиля при входе в Web App
 app.post('/api/profile', async (req, res) => {
   const { user_id, username, first_name, language_code } = req.body;
 
@@ -61,7 +105,7 @@ app.post('/api/profile', async (req, res) => {
 });
 
 // ==========================================
-// 2. КАТЕГОРИИ
+// 3. КАТЕГОРИИ
 // ==========================================
 
 app.get('/api/categories', async (req, res) => {
@@ -79,7 +123,7 @@ app.get('/api/categories', async (req, res) => {
 });
 
 // ==========================================
-// 3. СОЗДАНИЕ И ПОЛУЧЕНИЕ ВСТРЕЧ
+// 4. ВСТРЕЧИ И СОЗДАНИЕ
 // ==========================================
 
 app.post('/api/events', async (req, res) => {
@@ -103,7 +147,6 @@ app.post('/api/events', async (req, res) => {
 
     if (error) throw error;
 
-    // Уведомление модератору в Telegram
     if (ADMIN_ID) {
       await bot.telegram.sendMessage(ADMIN_ID, 
         `📌 *Новое объявление на модерацию!*\n\n` +
@@ -146,7 +189,7 @@ app.get('/api/events', async (req, res) => {
 });
 
 // ==========================================
-// 4. МОДЕРАЦИЯ ЧЕРЕЗ БОТА
+// 5. МОДЕРАЦИЯ (CALLBACK)
 // ==========================================
 
 bot.on('callback_query', async (ctx) => {
@@ -165,5 +208,6 @@ bot.on('callback_query', async (ctx) => {
   await ctx.answerCbQuery();
 });
 
+// Запуск бота и Express
 bot.launch();
 app.listen(process.env.PORT || 3000, () => console.log('Server started...'));
