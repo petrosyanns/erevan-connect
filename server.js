@@ -23,7 +23,7 @@ bot.start((ctx) => {
   ctx.reply(
     `Привет, ${ctx.from.first_name}! 👋\nНажми кнопку ниже, чтобы открыть приложение досуга:`,
     Markup.inlineKeyboard([
-      [Markup.button.webApp('Открыть приложение', process.env.WEBAPP_URL || 'https://google.com')]
+      [Markup.button.webApp('Открыть приложение', process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com')]
     ])
   );
 });
