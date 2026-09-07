@@ -1,6 +1,11 @@
 const tg = window.Telegram?.WebApp;
 if (tg) tg.expand();
 
+// Базовый URL для API (работает и локально, и на Render)
+const API_BASE = (window.location.hostname === 'localhost' || window.location.origin === 'https://erevan-connect.onrender.com')
+  ? '' 
+  : 'https://erevan-connect.onrender.com';
+
 let allEvents = [];
 let categories = [];
 let activeCategory = 'all';
@@ -111,7 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       first_name: user.first_name,
       username: user.username,
       language_code: user.language_code || 'ru',
-      is_vip: false // по умолчанию
+      is_vip: false
     };
 
     const userLang = (user.language_code || 'ru').toLowerCase();
@@ -138,29 +143,24 @@ function switchLanguage() {
 function updateUIStrings() {
   const t = dict[currentLang] || dict.ru;
   
-  document.getElementById('hello').innerText = `${t.hello}, ${currentUser?.first_name || ''}!`;
-  document.getElementById('lang-btn').innerText = currentLang === 'ru' ? 'EN' : currentLang === 'en' ? 'AM' : 'RU';
-  document.getElementById('txt-create-btn').innerText = t.create;
+  const helloEl = document.getElementById('hello');
+  if (helloEl) helloEl.innerText = `${t.hello}, ${currentUser?.first_name || ''}!`;
   
-  document.getElementById('search').placeholder = t.searchPlaceholder;
-  document.getElementById('opt-all-formats').innerText = t.allFormats;
-  document.getElementById('opt-offline').innerText = t.offline;
-  document.getElementById('opt-online').innerText = t.online;
-  document.getElementById('opt-all-cities').innerText = t.allCities;
+  const langBtn = document.getElementById('lang-btn');
+  if (langBtn) langBtn.innerText = currentLang === 'ru' ? 'EN' : currentLang === 'en' ? 'AM' : 'RU';
+  
+  const createBtn = document.getElementById('txt-create-btn');
+  if (createBtn) createBtn.innerText = t.create;
+  
+  const searchEl = document.getElementById('search');
+  if (searchEl) searchEl.placeholder = t.searchPlaceholder;
 
   // Модальное окно
-  document.getElementById('txt-modal-title').innerText = t.newEvent;
-  document.getElementById('lbl-category').innerText = t.categoryLabel;
-  document.getElementById('lbl-title').innerText = t.titleLabel;
-  document.getElementById('event-title').placeholder = t.titlePlaceholder;
-  document.getElementById('lbl-desc').innerText = t.descLabel;
-  document.getElementById('event-desc').placeholder = t.descPlaceholder;
-  document.getElementById('lbl-location').innerText = t.locationLabel;
-  document.getElementById('event-location').placeholder = t.locationPlaceholder;
-  document.getElementById('lbl-format').innerText = t.formatLabel;
-  document.getElementById('lbl-date').innerText = t.dateLabel;
-  document.getElementById('lbl-max').innerText = t.maxLabel;
-  document.getElementById('btn-submit-event').innerText = t.submitBtn;
+  const modalTitle = document.getElementById('txt-modal-title');
+  if (modalTitle) modalTitle.innerText = t.newEvent;
+  
+  const submitBtn = document.getElementById('btn-submit-event');
+  if (submitBtn) submitBtn.innerText = t.submitBtn;
 
   renderCategoriesChips();
   renderCategoriesSelect();
@@ -169,7 +169,7 @@ function updateUIStrings() {
 
 async function registerUser(tgUser) {
   try {
-    const res = await fetch('/api/profile', {
+    const res = await fetch(`${API_BASE}/api/profile`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -190,10 +190,9 @@ async function registerUser(tgUser) {
 
 async function loadCategories() {
   try {
-    const res = await fetch('/api/categories');
+    const res = await fetch(`${API_BASE}/api/categories`);
     const result = await res.json();
     if (result.success) {
-      // Удаляем дубликаты категорий по имени
       const uniqueCats = [];
       const seenNames = new Set();
 
@@ -223,6 +222,8 @@ function getCategoryName(c) {
 
 function renderCategoriesChips() {
   const container = document.getElementById('category-chips');
+  if (!container) return;
+
   const t = dict[currentLang] || dict.ru;
   
   let html = `<button onclick="filterCategory('all')" class="cat-btn ${activeCategory === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'glass text-zinc-300'} px-3.5 py-1.5 rounded-xl font-medium whitespace-nowrap text-xs transition">${t.allCats}</button>`;
@@ -250,7 +251,7 @@ function filterCategory(catId) {
 
 async function loadEvents() {
   try {
-    const res = await fetch('/api/events');
+    const res = await fetch(`${API_BASE}/api/events`);
     const result = await res.json();
 
     if (result.success) {
@@ -258,29 +259,32 @@ async function loadEvents() {
       renderEvents();
     }
   } catch (err) {
-    document.getElementById('events-list').innerHTML = `<div class="text-center text-xs text-rose-400 py-4">Ошибка загрузки</div>`;
+    const list = document.getElementById('events-list');
+    if (list) list.innerHTML = `<div class="text-center text-xs text-rose-400 py-4">Ошибка загрузки</div>`;
   }
 }
 
 function renderEvents() {
   const container = document.getElementById('events-list');
-  const search = document.getElementById('search').value.toLowerCase();
-  const formatFilter = document.getElementById('filter-format').value;
-  const locationFilter = document.getElementById('filter-location').value;
+  if (!container) return;
+
+  const search = (document.getElementById('search')?.value || '').toLowerCase();
+  const formatFilter = document.getElementById('filter-format')?.value || 'all';
+  const locationFilter = document.getElementById('filter-location')?.value || 'all';
   const t = dict[currentLang] || dict.ru;
 
   const filtered = allEvents.filter(ev => {
-    const matchSearch = ev.title.toLowerCase().includes(search) || 
+    const matchSearch = (ev.title || '').toLowerCase().includes(search) || 
                         (ev.description && ev.description.toLowerCase().includes(search)) ||
-                        ev.location.toLowerCase().includes(search);
+                        (ev.location || '').toLowerCase().includes(search);
     
     const matchCategory = activeCategory === 'all' || String(ev.category_id) === String(activeCategory);
     
     const matchFormat = formatFilter === 'all' || 
-      (formatFilter === 'online' && ev.location.toLowerCase().includes('онлайн')) ||
-      (formatFilter === 'offline' && !ev.location.toLowerCase().includes('онлайн'));
+      (formatFilter === 'online' && ev.location?.toLowerCase().includes('онлайн')) ||
+      (formatFilter === 'offline' && !ev.location?.toLowerCase().includes('онлайн'));
 
-    const matchLocation = locationFilter === 'all' || ev.location.toLowerCase().includes(locationFilter.toLowerCase());
+    const matchLocation = locationFilter === 'all' || (ev.location || '').toLowerCase().includes(locationFilter.toLowerCase());
 
     return matchSearch && matchCategory && matchFormat && matchLocation;
   });
@@ -298,7 +302,6 @@ function renderEvents() {
     const categoryName = ev.categories ? `${ev.categories.icon || '📌'} ${getCategoryName(ev.categories)}` : '🔥';
     const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleString(currentLang === 'am' ? 'hy-AM' : currentLang, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : t.timeNotSet;
     
-    // Проверка VIP статуса автора встречи
     const isVip = ev.users?.is_vip || ev.is_vip || false;
 
     return `
@@ -350,45 +353,77 @@ function renderEvents() {
 }
 
 async function submitEvent() {
-  const title = document.getElementById('event-title').value.trim();
-  const description = document.getElementById('event-desc').value.trim();
-  const location = document.getElementById('event-location').value.trim();
-  const event_date = document.getElementById('event-date').value;
-  const max_people = document.getElementById('event-max').value;
-  const category_id = document.getElementById('event-category').value;
+  const title = (document.getElementById('event-title')?.value || '').trim();
+  const description = (document.getElementById('event-description')?.value || document.getElementById('event-desc')?.value || '').trim();
+  const location = (document.getElementById('event-location')?.value || '').trim();
+  const event_date = document.getElementById('event-date')?.value;
+  const max_people = document.getElementById('event-max-people')?.value || document.getElementById('event-max')?.value || 2;
+  const category_id = document.getElementById('event-category')?.value || 1;
 
   if (!title || !location || !event_date) {
     alert('Заполните обязательные поля');
     return;
   }
 
+  const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || currentUser?.telegram_id;
+
+  if (!userId) {
+    alert('Ошибка авторизации. Откройте приложение из Telegram.');
+    return;
+  }
+
   try {
-    const res = await fetch('/api/events', {
+    const res = await fetch(`${API_BASE}/api/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_id: currentUser.telegram_id,
-        category_id,
+        user_id: userId,
+        category_id: parseInt(category_id),
         title,
         description,
         location,
         event_date,
-        max_people,
-        is_vip: currentUser.is_vip || false
+        max_people: parseInt(max_people),
+        is_vip: Boolean(currentUser?.is_vip)
       })
     });
 
     const data = await res.json();
+
     if (data.success) {
-      alert('⏳ Объявление отправлено на модерацию!');
+      alert('Объявление отправлено на модерацию!');
+      
+      // Сброс значений полей
+      if (document.getElementById('event-title')) document.getElementById('event-title').value = '';
+      if (document.getElementById('event-description')) document.getElementById('event-description').value = '';
+      if (document.getElementById('event-desc')) document.getElementById('event-desc').value = '';
+      if (document.getElementById('event-location')) document.getElementById('event-location').value = '';
+      if (document.getElementById('event-date')) document.getElementById('event-date').value = '';
+      
       closeModal();
-      loadEvents();
+    } else {
+      alert('Ошибка сервера: ' + data.error);
     }
   } catch (err) {
-    alert('Ошибка при создании встречи');
+    console.error('Ошибка отправки формы:', err);
+    alert('Не удалось отправить запрос');
   }
 }
 
-function openModal() { document.getElementById('modal').classList.remove('hidden'); }
-function closeModal() { document.getElementById('modal').classList.add('hidden'); }
-function escapeHtml(text) { return String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function openModal() { 
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.remove('hidden'); 
+}
+
+function closeModal() { 
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.add('hidden'); 
+}
+
+function escapeHtml(text) { 
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;'); 
+}
