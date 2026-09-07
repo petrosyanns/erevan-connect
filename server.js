@@ -99,12 +99,13 @@ app.post('/api/profile', async (req, res) => {
   }
 });
 
-// Получить объявления (со связями категории и автора)
+// Получить ТОЛЬКО ОДОБРЕННЫЕ объявления
 app.get('/api/events', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('events')
       .select('*, categories(id, name_ru, name_en, name_am, icon), users(telegram_id, first_name, username, is_vip)')
+      .eq('status', 'approved') // 👈 ФИЛЬТР: Возвращаем только одобренные посты
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -115,7 +116,7 @@ app.get('/api/events', async (req, res) => {
   }
 });
 
-// Создать новое объявление
+// Создать новое объявление (со статусом 'pending')
 app.post('/api/events', async (req, res) => {
   const { user_id, category_id, title, description, location, event_date, max_people } = req.body;
 
@@ -131,7 +132,7 @@ app.post('/api/events', async (req, res) => {
       username: req.body.username || ''
     }, { onConflict: 'telegram_id' });
 
-    // 2. Вставляем объявление
+    // 2. Вставляем объявление со статусом 'pending'
     const { data: event, error } = await supabase
       .from('events')
       .insert({
@@ -142,7 +143,7 @@ app.post('/api/events', async (req, res) => {
         location,
         event_date,
         max_people: parseInt(max_people) || 2,
-        status: 'approved' // Авто-одобрение
+        status: 'pending' // 👈 ИЗМЕНЕНО: Отправляется на модерацию!
       })
       .select()
       .single();
@@ -153,10 +154,12 @@ app.post('/api/events', async (req, res) => {
     if (ADMIN_ID) {
       try {
         const textMessage = 
-          `📌 *Новое объявление!* (#${event.id})\n\n` +
+          `📌 *Новое объявление на модерацию!* (#${event.id})\n\n` +
           `📝 *Заголовок:* ${title}\n` +
+          `📖 *Описание:* ${description || 'Нет'}\n` +
           `📍 *Локация:* ${location}\n` +
           `📅 *Дата:* ${event_date}\n` +
+          `👥 *Мест:* ${max_people}\n` +
           `👤 *Автор ID:* \`${user_id}\``;
 
         await bot.telegram.sendMessage(ADMIN_ID, textMessage, {
@@ -195,14 +198,47 @@ bot.on('callback_query', async (ctx) => {
   try {
     if (data.startsWith('approve_ev_')) {
       const id = data.replace('approve_ev_', '');
-      await supabase.from('events').update({ status: 'approved' }).eq('id', id);
+      
+      const { data: event } = await supabase
+        .from('events')
+        .update({ status: 'approved' })
+        .eq('id', id)
+        .select()
+        .single();
+
       await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✅ STATUS: ОДОБРЕНО`);
       await ctx.answerCbQuery('✅ Одобрено!');
+
+      // Отправляем сообщение автору
+      if (event?.user_id) {
+        try {
+          await bot.telegram.sendMessage(event.user_id, `🎉 Ваше объявление *«${event.title}»* было успешно одобрено и опубликовано!`, { parse_mode: 'Markdown' });
+        } catch (e) {
+          console.error('Не удалось отправить уведомление пользователю:', e.message);
+        }
+      }
+
     } else if (data.startsWith('reject_ev_')) {
       const id = data.replace('reject_ev_', '');
-      await supabase.from('events').update({ status: 'rejected' }).eq('id', id);
+      
+      const { data: event } = await supabase
+        .from('events')
+        .update({ status: 'rejected' })
+        .eq('id', id)
+        .select()
+        .single();
+
       await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n❌ STATUS: ОТКЛОНЕНО`);
       await ctx.answerCbQuery('❌ Отклонено.');
+
+      // Отправляем сообщение автору
+      if (event?.user_id) {
+        try {
+          await bot.telegram.sendMessage(event.user_id, `😔 Ваше объявление *«${event.title}»* было отклонено модератором.`, { parse_mode: 'Markdown' });
+        } catch (e) {
+          console.error('Не удалось отправить уведомление пользователю:', e.message);
+        }
+      }
     }
   } catch (err) {
     console.error('Ошибка модерации:', err);

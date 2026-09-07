@@ -14,6 +14,7 @@ let currentLang = 'ru';
 let categoriesList = [];
 let eventsList = [];
 let selectedCategoryId = 'all';
+let searchTimeout = null;
 
 // Переводы интерфейса
 const translations = {
@@ -29,7 +30,10 @@ const translations = {
     lblMax: "Количество человек",
     btnPublish: "Опубликовать",
     allCategories: "Все категории",
-    writeAuthor: "Написать автору"
+    writeAuthor: "Написать автору",
+    noEvents: "Объявлений пока нет",
+    noUsername: "Нет username",
+    authorLabel: "Автор:"
   },
   en: {
     createBtn: "Create",
@@ -43,7 +47,10 @@ const translations = {
     lblMax: "Max People",
     btnPublish: "Publish",
     allCategories: "All Categories",
-    writeAuthor: "Contact Author"
+    writeAuthor: "Contact Author",
+    noEvents: "No meetups found",
+    noUsername: "No username",
+    authorLabel: "Author:"
   },
   am: {
     createBtn: "Ստեղծել",
@@ -57,7 +64,10 @@ const translations = {
     lblMax: "Մարդկանց քանակը",
     btnPublish: "Հրապարակել",
     allCategories: "Բոլորը",
-    writeAuthor: "Գրել հեղինակին"
+    writeAuthor: "Գրել հեղինակին",
+    noEvents: "Հայտարարություններ չկան",
+    noUsername: "Առանց username",
+    authorLabel: "Հեղինակ:"
   }
 };
 
@@ -142,10 +152,14 @@ function populateModalCategories() {
   const select = document.getElementById('event-category');
   if (!select) return;
 
+  const currentValue = select.value;
+
   select.innerHTML = categoriesList.map(cat => {
     const name = cat[`name_${currentLang}`] || cat.name_ru;
     return `<option value="${cat.id}">${cat.icon} ${name}</option>`;
   }).join('');
+
+  if (currentValue) select.value = currentValue;
 }
 
 // Загрузка объявлений
@@ -161,6 +175,14 @@ async function loadEvents() {
     console.error('Ошибка загрузки объявлений:', err);
   }
 }
+
+// Поиск с задержкой (Debounce)
+window.debouncedSearch = function() {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    renderEvents();
+  }, 250);
+};
 
 // Рендер объявлений в ленту
 window.renderEvents = function() {
@@ -187,12 +209,12 @@ window.renderEvents = function() {
     return true;
   });
 
+  const t = translations[currentLang];
+
   if (filtered.length === 0) {
-    container.innerHTML = `<div class="text-center text-xs text-zinc-500 py-8">Объявлений пока нет</div>`;
+    container.innerHTML = `<div class="text-center text-xs text-zinc-500 py-8">${t.noEvents}</div>`;
     return;
   }
-
-  const t = translations[currentLang];
 
   container.innerHTML = filtered.map(ev => {
     const cat = ev.categories || {};
@@ -205,7 +227,7 @@ window.renderEvents = function() {
     });
 
     const authorUsername = author.username ? `@${author.username}` : '';
-    const tgLink = author.username ? `https://t.me/${author.username}` : `https://t.me/c/${author.telegram_id}`;
+    const tgLink = author.username ? `https://t.me/${author.username}` : null;
 
     return `
       <div class="glass p-4 rounded-2xl space-y-3 fade-in relative ${ev.is_vip ? 'border border-amber-500/40 bg-amber-500/5' : ''}">
@@ -229,13 +251,17 @@ window.renderEvents = function() {
 
         <div class="flex items-center justify-between pt-2">
           <div class="text-[11px] text-zinc-400">
-            Автор: <span class="text-white font-medium">${escapeHtml(author.first_name || 'Пользователь')}</span> 
+            ${t.authorLabel} <span class="text-white font-medium">${escapeHtml(author.first_name || 'Пользователь')}</span> 
             ${authorUsername ? `<span class="text-indigo-400">${authorUsername}</span>` : ''}
           </div>
-          <a href="${tgLink}" target="_blank" 
-             class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-md transition active:scale-95 flex items-center gap-1">
-            <i class="fa-paper-plane text-[10px]"></i> ${t.writeAuthor}
-          </a>
+          ${tgLink ? `
+            <a href="${tgLink}" target="_blank" 
+               class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-md transition active:scale-95 flex items-center gap-1">
+              <i class="fa-paper-plane text-[10px]"></i> ${t.writeAuthor}
+            </a>
+          ` : `
+            <span class="text-[11px] text-zinc-500 font-medium">${t.noUsername}</span>
+          `}
         </div>
       </div>
     `;
@@ -279,13 +305,14 @@ window.submitEvent = async function() {
     const result = await res.json();
     if (result.success) {
       closeModal();
+      
       // Очистка формы
       document.getElementById('event-title').value = '';
       document.getElementById('event-desc').value = '';
       document.getElementById('event-location').value = '';
       document.getElementById('event-date').value = '';
 
-      await loadEvents(); // Перезагружаем список
+      await loadEvents();
     } else {
       alert('Ошибка: ' + result.error);
     }
@@ -303,7 +330,9 @@ window.switchLanguage = function() {
   const nextIdx = (langs.indexOf(currentLang) + 1) % langs.length;
   currentLang = langs[nextIdx];
 
-  document.getElementById('lang-btn').textContent = currentLang.toUpperCase();
+  const langBtn = document.getElementById('lang-btn');
+  if (langBtn) langBtn.textContent = currentLang.toUpperCase();
+
   updateUiLanguage();
   renderCategories();
   populateModalCategories();
@@ -334,11 +363,23 @@ function updateUiLanguage() {
 
 // Модальное окно
 window.openModal = function() {
-  document.getElementById('modal')?.classList.remove('hidden');
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.remove('hidden');
+
+  if (tg?.BackButton) {
+    tg.BackButton.show();
+    tg.BackButton.onClick(closeModal);
+  }
 };
 
 window.closeModal = function() {
-  document.getElementById('modal')?.classList.add('hidden');
+  const modal = document.getElementById('modal');
+  if (modal) modal.classList.add('hidden');
+
+  if (tg?.BackButton) {
+    tg.BackButton.hide();
+    tg.BackButton.offClick(closeModal);
+  }
 };
 
 function escapeHtml(text) {
