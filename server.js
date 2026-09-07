@@ -14,6 +14,12 @@ const ADMIN_ID = process.env.ADMIN_ID;
 const bot = new Telegraf(BOT_TOKEN);
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Вспомогательная функция для безопасного экранирования спецсимволов MarkdownV2 / Markdown
+function escapeMarkdown(text) {
+  if (!text) return '';
+  return text.replace(/[_*[\]()~`>#+-=|{}.!]/g, '\\$&');
+}
+
 // ==========================================
 // 1. КОМАНДЫ TELEGRAM БОТА
 // ==========================================
@@ -21,7 +27,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // Обработка команды /start
 bot.start((ctx) => {
   ctx.reply(
-    `Привет, ${ctx.from.first_name}! 👋\nНажми кнопку ниже, чтобы открыть приложение досуга:`,
+    `Привет, ${ctx.from.first_name || 'друг'}! 👋\nНажми кнопку ниже, чтобы открыть приложение досуга:`,
     Markup.inlineKeyboard([
       [Markup.button.webApp('Открыть приложение', process.env.WEBAPP_URL || 'https://erevan-connect.onrender.com')]
     ])
@@ -48,7 +54,6 @@ bot.command('users', async (ctx) => {
       message += `${index + 1}. *${u.first_name || 'Без имени'}* (${username}) — \`${u.telegram_id}\`\n`;
     });
 
-    // Если сообщение слишком длинное (лимит Telegram 4096 символов)
     if (message.length > 4000) {
       message = message.substring(0, 4000) + '\n\n...список обрезан.';
     }
@@ -147,15 +152,18 @@ app.post('/api/events', async (req, res) => {
 
     if (error) throw error;
 
+    // Отправка уведомления админу на модерацию
     if (ADMIN_ID) {
-      await bot.telegram.sendMessage(ADMIN_ID, 
-        `📌 *Новое объявление на модерацию!*\n\n` +
-        `📝 *Заголовок:* ${title}\n` +
-        `📍 *Локация:* ${location}\n` +
-        `📄 *Описание:* ${description || 'Нет'}\n` +
-        `📅 *Дата:* ${event_date}\n` +
-        `👤 *Автор ID:* \`${user_id}\``, 
-        {
+      try {
+        const textMessage = 
+          `📌 *Новое объявление на модерацию!* (#${event.id})\n\n` +
+          `📝 *Заголовок:* ${title}\n` +
+          `📍 *Локация:* ${location}\n` +
+          `📄 *Описание:* ${description || 'Нет'}\n` +
+          `📅 *Дата:* ${event_date}\n` +
+          `👤 *Автор ID:* \`${user_id}\``;
+
+        await bot.telegram.sendMessage(ADMIN_ID, textMessage, {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [
@@ -163,12 +171,15 @@ app.post('/api/events', async (req, res) => {
               Markup.button.callback('❌ Отклонить', `reject_ev_${event.id}`)
             ]
           ])
-        }
-      );
+        });
+      } catch (tgErr) {
+        console.error('Ошибка отправки сообщения админу в Telegram:', tgErr);
+      }
     }
 
     res.json({ success: true, event });
   } catch (err) {
+    console.error('Ошибка создания события:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -194,20 +205,50 @@ app.get('/api/events', async (req, res) => {
 
 bot.on('callback_query', async (ctx) => {
   const data = ctx.callbackQuery.data;
+  const userId = ctx.from.id;
 
-  if (data.startsWith('approve_ev_')) {
-    const id = data.replace('approve_ev_', '');
-    await supabase.from('events').update({ status: 'approved' }).eq('id', id);
-    await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n✅ *ОДОБРЕНО*`, { parse_mode: 'Markdown' });
-  } else if (data.startsWith('reject_ev_')) {
-    const id = data.replace('reject_ev_', '');
-    await supabase.from('events').update({ status: 'rejected' }).eq('id', id);
-    await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n❌ *ОТКЛОНЕНО*`, { parse_mode: 'Markdown' });
+  // Проверка прав администратора
+  if (ADMIN_ID && String(userId) !== String(ADMIN_ID)) {
+    return ctx.answerCbQuery('❌ У вас нет прав для модерации.', { show_alert: true });
   }
 
-  await ctx.answerCbQuery();
+  try {
+    if (data.startsWith('approve_ev_')) {
+      const id = data.replace('approve_ev_', '');
+      
+      const { error } = await supabase
+        .from('events')
+        .update({ status: 'approved' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      await ctx.editMessageText(
+        `${ctx.callbackQuery.message.text}\n\n✅ STATUS: ОДОБРЕНО`
+      );
+      await ctx.answerCbQuery('✅ Объявление одобрено и добавлено в ленту!');
+
+    } else if (data.startsWith('reject_ev_')) {
+      const id = data.replace('reject_ev_', '');
+
+      const { error } = await supabase
+        .from('events')
+        .update({ status: 'rejected' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      await ctx.editMessageText(
+        `${ctx.callbackQuery.message.text}\n\n❌ STATUS: ОТКЛОНЕНО`
+      );
+      await ctx.answerCbQuery('❌ Объявление отклонено.');
+    }
+  } catch (err) {
+    console.error('Ошибка модерации:', err);
+    await ctx.answerCbQuery('⚠️ Произошла ошибка при обновлении базы данных.', { show_alert: true });
+  }
 });
 
 // Запуск бота и Express
-bot.launch();
-app.listen(process.env.PORT || 3000, () => console.log('Server started...'));
+bot.launch().then(() => console.log('Telegram Bot successfully started!'));
+app.listen(process.env.PORT || 3000, () => console.log('Express Server started...'));
